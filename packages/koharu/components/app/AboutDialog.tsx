@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@koharu/ui/components/dialog'
 
-const author = 'Mayo Takanashi'
+const author = 'Kippus fork'
 
 export function AboutDialog({
   open,
@@ -38,7 +38,7 @@ export function AboutDialog({
             <Image src='/icon.png' alt='' width={30} height={30} priority />
           </div>
           <DialogHeader className='min-w-0 gap-1'>
-            <DialogTitle className='text-[15px]'>Koharu</DialogTitle>
+            <DialogTitle className='text-[15px]'>Kipoharu</DialogTitle>
             <DialogDescription className='text-[11px]'>{t('about.description')}</DialogDescription>
           </DialogHeader>
         </div>
@@ -46,7 +46,11 @@ export function AboutDialog({
         <dl className='grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 border-t border-border/70 pt-3 text-[11px]'>
           <dt className='text-muted-foreground'>{t('about.version')}</dt>
           <dd className='text-right font-medium'>
-            {version === null ? t('about.unavailable') : (version ?? t('common.loading'))}
+            {version === null
+              ? t('about.unavailable')
+              : version
+                ? `${version.replace(/\.0$/, '')}K`
+                : t('common.loading')}
           </dd>
           <dt className='text-muted-foreground'>{t('about.author')}</dt>
           <dd className='text-right font-medium'>{author}</dd>

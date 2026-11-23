@@ -1,5 +1,6 @@
 'use client'
 
+import { useMutation } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
@@ -12,11 +13,12 @@ import { StatusBar } from '@/components/editor/StatusBar'
 import { ToolBar } from '@/components/editor/ToolBar'
 import { TypeBar } from '@/components/editor/TypeBar'
 import { toRgba } from '@/lib/color'
+import { isBlockLayer, isTextLayer, walkLayers } from '@/lib/document'
 import { send, usePage } from '@/lib/queries'
 import { deleteSelection } from '@/lib/scene'
 import { shortcuts, toolKeys } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
-import { commands, type Rgba } from '@koharu/ipc/protocol'
+import { commands, type LayerId, type Rgba } from '@koharu/ipc/protocol'
 
 /** A command's shortcut matches the letter its key types, and keeps the key from the webview. */
 const command = { preventDefault: true, useKey: true } as const
@@ -106,7 +108,55 @@ export function CanvasWorkspace() {
 
   // Photoshop's shortcuts, which leave a focused field's or control's keys to it.
   const selectedLayers = useKoharuStore((state) => state.selectedLayers)
+  const typing = useKoharuStore((state) => state.typing)
   const { selectLayers, setTool } = useKoharuStore.getState()
+  // The scene already clones whole text and translation blocks, including their styling.
+  // Labels identify the copies without also selecting a block's new mask and clean-up.
+  const duplication = useMutation({
+    mutationFn: (layers: LayerId[]) =>
+      commands.edit({
+        label: 'duplicate_layer',
+        ops: layers.map((layer, index) => ({
+          op: 'duplicate_layer' as const,
+          layer,
+          id: `$duplicate${index}`,
+        })),
+      }),
+    onSuccess: (change, layers) => {
+      const labels = new Set(layers.map((_, index) => `duplicate${index}`))
+      selectLayers(
+        change.created.flatMap((created) =>
+          created.kind === 'layer' && created.label && labels.has(created.label)
+            ? [created.id]
+            : [],
+        ),
+      )
+    },
+  })
+  // Ctrl+D duplicates selected text; otherwise it keeps the original Deselect action.
+  useHotkeys(
+    shortcuts.deselect,
+    () => {
+      if (typing !== null || !page) {
+        send(commands.deselect)
+        return
+      }
+      const targets = walkLayers(page.layers)
+        .map(({ layer }) => layer)
+        .filter(
+          (layer) =>
+            selectedLayers.includes(layer.id) && (isTextLayer(layer) || isBlockLayer(layer)),
+        )
+        .map((layer) => layer.id)
+      if (targets.length) {
+        if (!duplication.isPending) duplication.mutate(targets)
+      } else {
+        send(commands.deselect)
+      }
+    },
+    command,
+  )
+
   useHotkeys(shortcuts.undo, () => send(commands.undo), command)
   useHotkeys(shortcuts.redo, () => send(commands.redo), command)
   useHotkeys(
@@ -114,7 +164,6 @@ export function CanvasWorkspace() {
     () => page && selectLayers(page.layers.map((layer) => layer.id)),
     command,
   )
-  useHotkeys(shortcuts.deselect, () => send(commands.deselect), command)
   useHotkeys(shortcuts.fit, () => send(commands.fit), command)
   useHotkeys(
     [shortcuts.delete, 'backspace'],

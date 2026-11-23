@@ -113,7 +113,11 @@ export function PageRail() {
     'w,s',
     (event) => {
       const index = pages.findIndex((page) => page.id === active)
-      if (index >= 0) select(index + (event.key.toLowerCase() === 'w' ? -1 : 1), false, false)
+      const next = index + (event.key.toLowerCase() === 'w' ? -1 : 1)
+      if (index >= 0 && pages[next]) {
+        select(next, false, false)
+        pageVirtualizer.scrollToIndex(next, { align: 'auto' })
+      }
     },
     { preventDefault: true, useKey: true },
   )
