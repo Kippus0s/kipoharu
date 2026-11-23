@@ -13,6 +13,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { observeElementRect, useVirtualizer } from '@tanstack/react-virtual'
 import { FilePlus2, FolderOpen, LoaderCircle, MoreHorizontal, Settings } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 import { useDebounce } from 'use-debounce'
 
@@ -107,6 +108,15 @@ export function PageRail() {
       send(commands.show, page.id)
     }
   }
+
+  useHotkeys(
+    'w,s',
+    (event) => {
+      const index = pages.findIndex((page) => page.id === active)
+      if (index >= 0) select(index + (event.key.toLowerCase() === 'w' ? -1 : 1), false, false)
+    },
+    { preventDefault: true, useKey: true },
+  )
 
   const deletion = useMutation({
     mutationFn: (page: string) => deletePages([page]),
