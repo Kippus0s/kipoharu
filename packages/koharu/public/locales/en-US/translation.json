@@ -374,6 +374,8 @@
       "thresholds": "Thresholds",
       "title": "Pipeline",
       "translator": {
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged.",
         "instructions": "Additional instructions",
         "instructionsDescription": "Optional, in any language and form, such as a name's spelling or the tone. Koharu adds them, as written, after its own system prompt.",
         "reasoning": "Reasoning",

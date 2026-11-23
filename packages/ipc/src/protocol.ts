@@ -940,6 +940,8 @@ export type TranslatorConfig = {
    *  models; only for a model that reads images.
    */
   vision?: boolean
+  /**  Whether translations inherit the detected source text colours and outlines. */
+  inherit_source_colors?: boolean
   /**
    *  How much the model reasons before it answers: off, or one of rig's
    *  portable levels after OpenAI's `reasoning_effort`, written as one word;

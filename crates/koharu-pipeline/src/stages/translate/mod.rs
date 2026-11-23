@@ -53,6 +53,8 @@ pub struct TranslatorConfig {
     /// texts, as an image goes with a chat message to OpenAI's and Gemini's
     /// models; only for a model that reads images.
     pub vision: bool,
+    /// Whether translations inherit the detected source text colours and outlines.
+    pub inherit_source_colors: bool,
     /// How much the model reasons before it answers: off, or one of rig's
     /// portable levels after OpenAI's `reasoning_effort`, written as one word;
     /// the model's own default when unset. rig refuses off for a model that
@@ -72,6 +74,7 @@ impl Default for TranslatorConfig {
             target: langid!("en"),
             instructions: String::new(),
             vision: false,
+            inherit_source_colors: true,
             reasoning: None,
         }
     }
@@ -240,7 +243,8 @@ fn written(
             // Its clean-up would erase the lettering for the translation to
             // redraw it in another hand.
             let unchanged = text.trim() == found.source.content.text().trim();
-            let placed = (!unchanged).then(|| placement(project, block, target));
+            let placed = (!unchanged)
+                .then(|| placement(project, block, target, config.inherit_source_colors));
             Some((block, source, text, placed))
         })
         .collect();

@@ -28,7 +28,12 @@ use crate::{Error, Result};
 /// sets is kept. It is vertical only when its source is and `target` is
 /// Japanese or Chinese, which are written so; any other language runs
 /// horizontally, turned by the source's tilt as the source is.
-pub fn placement(project: &Project, block: LayerId, target: &LanguageIdentifier) -> Result<Op> {
+pub fn placement(
+    project: &Project,
+    block: LayerId,
+    target: &LanguageIdentifier,
+    inherit_source_colors: bool,
+) -> Result<Op> {
     let (page, holder) = project.parent(block)?;
     let Content::Block(this) = &project.layer(block)?.content else {
         return Err(Error::invalid(format!("layer {block} isn't a block")));
@@ -77,12 +82,17 @@ pub fn placement(project: &Project, block: LayerId, target: &LanguageIdentifier)
         chars.insert("size".to_owned(), json!(size));
     }
     let source = &this.source.style.chars;
-    if given.and_then(|style| style.chars.fill).is_none()
+    if !inherit_source_colors {
+        chars.insert("fill".to_owned(), json!(Rgba([0.0, 0.0, 0.0, 1.0])));
+        chars.insert("stroke".to_owned(), json!(Rgba([1.0; 4])));
+        chars.insert("stroke_width".to_owned(), json!(3.0));
+    }
+    if inherit_source_colors && given.and_then(|style| style.chars.fill).is_none()
         && let Some(fill) = source.fill
     {
         chars.insert("fill".to_owned(), json!(fill));
     }
-    if given.and_then(|style| style.chars.stroke).is_none() {
+    if inherit_source_colors && given.and_then(|style| style.chars.stroke).is_none() {
         let outline = match (source.stroke, source.stroke_width) {
             (Some(stroke), Some(width)) => {
                 let scale = size.zip(source.size).map_or(1.0, |(to, from)| to / from);
@@ -221,7 +231,16 @@ mod tests {
 
     /// The translation `block` gets once placed into `target`.
     fn placed(session: &mut Session, block: LayerId, target: &LanguageIdentifier) -> Result<Text> {
-        let op = placement(&session.project(), block, target)?;
+        placed_with(session, block, target, true)
+    }
+
+    fn placed_with(
+        session: &mut Session,
+        block: LayerId,
+        target: &LanguageIdentifier,
+        inherit_source_colors: bool,
+    ) -> Result<Text> {
+        let op = placement(&session.project(), block, target, inherit_source_colors)?;
         session.apply(Edit {
             label: "test".to_owned(),
             ops: vec![op],
@@ -412,6 +431,31 @@ mod tests {
         let text = placed(&mut session, ids[1], &langid!("en"))?;
         assert_eq!(text.style.chars.fill, None);
         assert_eq!(text.style.chars.stroke, None);
+        Ok(())
+    }
+
+    #[test]
+    fn translations_can_use_black_with_white_outline_without_changing_source_colours() -> Result<()> {
+        let red = Rgba([1.0, 0.0, 0.0, 1.0]);
+        let white = Rgba([1.0; 4]);
+        let dir = tempfile::tempdir()?;
+        let (mut session, ids) = page(
+            &dir,
+            &[("text", None, json!({"kind": "block", "role": "text", "source": {
+                "frame": {"box": {"bounds": {"x": 0.0, "y": 0.0, "width": 120.0, "height": 120.0}}},
+                "style": {"chars": {"fill": red, "stroke": white, "stroke_width": 2.0}},
+            }}))],
+        )?;
+        let text = placed_with(&mut session, ids[0], &langid!("en"), false)?;
+        assert_eq!(text.style.chars.fill, Some(Rgba([0.0, 0.0, 0.0, 1.0])));
+        assert_eq!(text.style.chars.stroke, Some(white));
+        assert_eq!(text.style.chars.stroke_width, Some(3.0));
+        let project = session.project();
+        let Content::Block(block) = &project.layer(ids[0])?.content else {
+            bail!("not a block")
+        };
+        assert_eq!(block.source.style.chars.fill, Some(red));
+        assert_eq!(block.source.style.chars.stroke, Some(white));
         Ok(())
     }
 

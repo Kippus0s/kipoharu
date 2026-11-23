@@ -269,6 +269,18 @@ function TranslatorOptions({
         />
       </PreferenceRow>
       <PreferenceRow
+        title={t('settings.pipeline.translator.inheritSourceColors')}
+        description={t('settings.pipeline.translator.inheritSourceColorsDescription')}
+      >
+        <Switch
+          aria-label={t('settings.pipeline.translator.inheritSourceColors')}
+          checked={value.inherit_source_colors ?? true}
+          onCheckedChange={(inherit_source_colors) =>
+            onChange({ ...value, inherit_source_colors })
+          }
+        />
+      </PreferenceRow>
+      <PreferenceRow
         title={t('settings.pipeline.translator.reasoning')}
         description={t('settings.pipeline.translator.reasoningDescription')}
       >
