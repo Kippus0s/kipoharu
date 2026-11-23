@@ -125,6 +125,40 @@ pub(crate) fn locked_inside(layer: &Layer) -> Option<LayerId> {
 /// page's top level. Paths come from `position` and are used before the
 /// tree changes, so a bad one is a bug.
 impl Page {
+    /// The lowest top-level layer containing a panel or balloon is the
+    /// boundary below which newly created text goes. Its descendants stay
+    /// above the new text without moving any existing layers.
+    pub fn text_insert_index(&self) -> usize {
+        fn contains_lettering_container(layer: &Layer) -> bool {
+            matches!(&layer.content, Content::Panel(_) | Content::Balloon(_))
+                || layer.children.iter().any(contains_lettering_container)
+        }
+
+        self.layers
+            .iter()
+            .position(contains_lettering_container)
+            .unwrap_or(self.layers.len())
+    }
+
+    /// New rasters sit under the top standalone lettering and under every
+    /// panel/balloon container, including the text added directly below it.
+    /// No existing layer is moved.
+    pub fn raster_insert_index(&self) -> usize {
+        let is_lettering = |layer: &Layer| match &layer.content {
+            Content::Text(_) => true,
+            Content::Block(block) => block.translation.is_some(),
+            _ => false,
+        };
+        let after_last_other = |layers: &[Layer]| {
+            layers
+                .iter()
+                .rposition(|layer| !is_lettering(layer))
+                .map_or(0, |index| index + 1)
+        };
+        let panel = self.text_insert_index();
+        after_last_other(&self.layers).min(after_last_other(&self.layers[..panel]))
+    }
+
     /// The path to `id`, if this page's tree holds it.
     pub(crate) fn position(&self, id: LayerId) -> Option<Vec<usize>> {
         fn search(layers: &[Layer], id: LayerId, path: &mut Vec<usize>) -> bool {
@@ -323,5 +357,74 @@ impl Project {
             self.index.remove(&id);
         }
         layer
+    }
+}
+
+#[cfg(test)]
+mod insertion_tests {
+    use serde_json::json;
+
+    use super::*;
+    use crate::{Edit, Op, Session};
+
+    #[test]
+    fn new_text_and_rasters_stay_below_nested_panel_lettering()
+        -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let mut session = Session::create(dir.path().join("test.khr"))?;
+        let changes = session.apply(Edit {
+            label: "setup".into(),
+            ops: [
+                json!({"op": "add_page", "id": "$page", "index": 0,
+                    "size": {"width": 100, "height": 100}}),
+                json!({"op": "add_layer", "page": "$page", "index": 0,
+                    "layer": {"kind": "raster"}}),
+                json!({"op": "add_layer", "id": "$panel", "page": "$page", "index": 1,
+                    "layer": {"kind": "panel", "outline": "M0 0 L100 0 L100 100 Z"}}),
+                json!({"op": "add_layer", "id": "$balloon", "page": "$page",
+                    "parent": "$panel", "index": 0,
+                    "layer": {"kind": "balloon", "outline": "M10 10 L50 10 L50 50 Z"}}),
+                json!({"op": "add_layer", "page": "$page", "parent": "$balloon",
+                    "index": 0, "layer": {"kind": "block", "source": {},
+                    "translation": {"content": "Panel text"}}}),
+                json!({"op": "add_layer", "page": "$page", "index": 2,
+                    "layer": {"kind": "text", "content": "Old top text"}}),
+            ]
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<std::result::Result<Vec<Op>, _>>()?,
+        })?;
+        let page = changes.pages.added[0];
+        let before = session.project().page(page)?.layers.clone();
+        assert_eq!(session.project().page(page)?.text_insert_index(), 1);
+        assert_eq!(session.project().page(page)?.raster_insert_index(), 1);
+
+        // Text inserted under the panel must still stay above a later raster.
+        let index = session.project().page(page)?.text_insert_index();
+        session.apply(Edit {
+            label: "text".into(),
+            ops: vec![serde_json::from_value(json!({
+                "op": "add_layer", "page": page, "index": index,
+                "layer": {"kind": "text", "content": "New text"}
+            }))?],
+        })?;
+        assert_eq!(session.project().page(page)?.raster_insert_index(), 1);
+        let index = session.project().page(page)?.raster_insert_index();
+        session.apply(Edit {
+            label: "paint".into(),
+            ops: vec![serde_json::from_value(json!({
+                "op": "add_layer", "page": page, "index": index,
+                "layer": {"kind": "raster"}
+            }))?],
+        })?;
+        let after = &session.project().page(page)?.layers;
+        assert_eq!(after.len(), before.len() + 2);
+        assert_eq!(after[0], before[0]);
+        assert_eq!(after[3], before[1]); // The panel, with its nested balloon and block.
+        assert_eq!(after[4], before[2]); // Previous text stays where it was relative to the panel.
+        assert!(matches!(&after[1].content, Content::Raster(_)));
+        assert!(matches!(&after[2].content, Content::Text(_)));
+        Ok(())
     }
 }

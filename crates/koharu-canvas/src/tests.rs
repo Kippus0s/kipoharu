@@ -609,6 +609,35 @@ fn a_stroke_paints_a_new_raster_where_it_ran() {
 }
 
 #[test]
+fn a_new_raster_stays_under_top_text_without_reordering_lower_text() {
+    let Some(mut fixture) = unscaled_of(
+        (100, 100),
+        vec![
+            json!({"op": "add_layer", "page": "$page", "index": 0,
+                "layer": {"kind": "text", "content": "Lower text"}}),
+            shape(1, (5.0, 5.0, 20.0, 20.0), json!({})),
+            json!({"op": "add_layer", "page": "$page", "index": 2,
+                "layer": {"kind": "text", "content": "Top text one"}}),
+            json!({"op": "add_layer", "page": "$page", "index": 3,
+                "layer": {"kind": "text", "content": "Top text two"}}),
+        ],
+    ) else {
+        return;
+    };
+    let before = layers(&fixture);
+    fixture.canvas.set_tool(Tool::Draw);
+    fixture.canvas.set_brush(brush(10.0, [1.0, 0.0, 0.0, 1.0]));
+    let effects = gesture(&mut fixture.canvas, (40.0, 50.0), (60.0, 50.0));
+    assert_eq!(apply(&mut fixture, effects), ["paint"]);
+
+    let after = layers(&fixture);
+    assert_eq!(after.len(), 5);
+    assert_eq!(after[..2], before[..2]);
+    assert_eq!(after[3..], before[2..]);
+    assert_eq!(fixture.canvas.selection(), [after[2]]);
+}
+
+#[test]
 fn painting_an_offset_raster_composites_onto_its_pixels() {
     let Some(mut fixture) = unscaled_of((100, 100), offset_raster()) else {
         return;

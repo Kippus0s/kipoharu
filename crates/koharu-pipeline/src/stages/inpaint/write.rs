@@ -137,8 +137,8 @@ fn pixels(cleanup: &Cleanup, image: &RgbImage, windows: &[(Window, RgbImage)]) -
     }
 }
 
-/// The area's new raster, named after its prompt, on top of the page, with
-/// `drawn` as its pixels and `limit`, the area, as its mask.
+/// The area's new raster, named after its prompt, below the top lettering,
+/// with `drawn` as its pixels and `limit`, the area, as its mask.
 fn layer(
     project: &Project,
     page: PageId,
@@ -156,7 +156,7 @@ fn layer(
             "op": "add_layer",
             "id": "$inpainted",
             "page": page,
-            "index": at.layers.len(),
+            "index": at.raster_insert_index(),
             "layer": {"kind": "raster", "name": name, "attributes": {
                 "c2pa": {"inpainting": made},
             }},
@@ -199,4 +199,71 @@ fn rgba(image: &RgbImage, rect: Rect, alpha: impl Fn(u32, u32) -> u8) -> Vec<u8>
             [r, g, b, alpha(x, y)]
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use koharu_scene::{Edit, Session};
+
+    use super::*;
+
+    /// A Remove stroke creates its raster under the top text and translated
+    /// block, but keeps manually arranged lettering below other layers.
+    #[test]
+    fn an_area_raster_goes_below_top_lettering() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let mut session = Session::create(dir.path().join("test.khr"))?;
+        let changes = session.apply(Edit {
+            label: "test".to_owned(),
+            ops: [
+                json!({"op": "add_page", "id": "$page", "index": 0,
+                    "size": {"width": 100, "height": 100}}),
+                json!({"op": "add_layer", "page": "$page", "index": 0,
+                    "layer": {"kind": "text", "content": "Lower text"}}),
+                json!({"op": "add_layer", "page": "$page", "index": 1,
+                    "layer": {"kind": "raster"}}),
+                json!({"op": "add_layer", "page": "$page", "index": 2,
+                    "layer": {"kind": "text", "content": "Top text"}}),
+                json!({"op": "add_layer", "page": "$page", "index": 3,
+                    "layer": {"kind": "block", "source": {},
+                        "translation": {"content": "Translated text"}}}),
+            ]
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<std::result::Result<Vec<Op>, _>>()?,
+        })?;
+        let page = changes.pages.added[0];
+        let before = session.project().page(page)?.layers.clone();
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+        };
+        let ops = layer(
+            session.project(),
+            page,
+            "remove",
+            &json!({}),
+            (rect, vec![255; 4]),
+            (rect, vec![255]),
+        )?;
+        let Op::AddLayer { index, parent, .. } = &ops[0] else {
+            panic!("the first operation should add the result raster");
+        };
+        assert_eq!(*index, 2);
+        assert!(parent.is_none());
+        assert_eq!(ops.len(), 4, "the raster, mask and pixel writes remain");
+        session.apply(Edit {
+            label: "remove".to_owned(),
+            ops,
+        })?;
+        let after = &session.project().page(page)?.layers;
+        assert_eq!(after.len(), before.len() + 1);
+        assert_eq!(after[..2], before[..2]);
+        assert_eq!(after[3..], before[2..]);
+        assert!(matches!(&after[2].content, Content::Raster(_)));
+        assert!(matches!(&after[2].children[0].content, Content::Mask(_)));
+        Ok(())
+    }
 }
