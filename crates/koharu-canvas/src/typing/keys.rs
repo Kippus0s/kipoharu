@@ -12,10 +12,8 @@ use crate::{Effect, tools::command};
 pub(crate) enum Keyed {
     /// Typing took it, answering these.
     Taken(Vec<Effect>),
-    /// Ctrl+Enter, or Enter on the number pad: keep what's typed and stop.
+    /// Escape, Ctrl+Enter, or Numpad Enter: keep what's typed and stop.
     Commit,
-    /// Escape: drop what's typed and stop.
-    Cancel,
     /// Not typing's: the host's.
     Pass,
 }
@@ -34,7 +32,7 @@ impl Typing {
         let vertical = self.base.direction == Direction::Vertical;
         let taken = Keyed::Taken(Vec::new());
         Ok(match &event.key {
-            Key::Named(NamedKey::Escape) => Keyed::Cancel,
+            Key::Named(NamedKey::Escape) => Keyed::Commit,
             Key::Named(NamedKey::Enter) if word || event.code == Code::NumpadEnter => Keyed::Commit,
             Key::Named(NamedKey::Enter) => {
                 self.insert("\n")?;

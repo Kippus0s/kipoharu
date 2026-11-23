@@ -403,10 +403,6 @@ impl Canvas {
             return Ok(match typing.key(event)? {
                 Keyed::Taken(effects) => Some(effects),
                 Keyed::Commit => Some(self.finish_typing()),
-                Keyed::Cancel => {
-                    self.typing = None;
-                    Some(Vec::new())
-                }
                 Keyed::Pass => None,
             });
         }
@@ -565,14 +561,14 @@ impl Canvas {
         let primary = button == Some(PointerButton::Primary);
         let mut effects = Vec::new();
         if primary && let Some(typing) = &mut self.typing {
-            // A press on the text puts its caret; one away commits it and
-            // goes on as a press, as Photoshop's Type tool does.
+            // A press on the text puts its caret; one away commits it
+            // without creating another text box on the same click.
             if typing.covers(sample.page, self.view.page_length(TYPING_SLACK)) {
                 typing.press(sample.page, sample.modifiers.shift(), sample.clicks);
                 typing.dragging = Some(pointer);
                 return Ok(Vec::new());
             }
-            effects = self.commit_typing();
+            return Ok(self.commit_typing());
         }
         let Some(cx) = self.context() else {
             return Ok(effects);

@@ -1564,7 +1564,7 @@ fn typed_text(content: Value) -> Vec<Value> {
 }
 
 #[test]
-fn escape_or_an_empty_commit_adds_no_text() {
+fn escape_keeps_text_and_an_empty_commit_adds_no_text() {
     let Some(mut fixture) = unscaled(Vec::new()) else {
         return;
     };
@@ -1577,12 +1577,15 @@ fn escape_or_an_empty_commit_adds_no_text() {
         Code::Escape,
         Modifiers::default(),
     );
-    assert!(escaped.is_empty());
+    assert_eq!(apply(&mut fixture, escaped), ["add_text"]);
     assert!(fixture.canvas.typing().is_none());
-    gesture(&mut fixture.canvas, (30.0, 40.0), (30.0, 40.0));
+    let text = layers(&fixture)[0];
+    assert_eq!(layer(&fixture, text)["content"], json!([{"insert": "Gone"}]));
+    // Committing a subsequent empty draft leaves the saved text alone.
+    gesture(&mut fixture.canvas, (300.0, 380.0), (300.0, 380.0));
     let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
     assert!(apply(&mut fixture, effects).is_empty());
-    assert!(layers(&fixture).is_empty());
+    assert_eq!(layers(&fixture), [text]);
 }
 
 #[test]
@@ -1619,13 +1622,16 @@ fn typing_into_a_text_edits_it_at_the_click_in_one_step() {
         Modifiers::default(),
     );
     type_text(&mut fixture.canvas, "Oh ");
-    // A click away commits it as one step, and starts the next text.
+    // A click away commits it as one step, without starting the next text.
     let effects = gesture(&mut fixture.canvas, (300.0, 380.0), (300.0, 380.0));
     assert_eq!(apply(&mut fixture, effects), ["set_text"]);
     assert_eq!(
         layer(&fixture, text)["content"],
         json!([{"insert": "Oh Hello!"}])
     );
+    assert!(fixture.canvas.typing().is_none());
+    // Only the next click starts a new text draft.
+    gesture(&mut fixture.canvas, (300.0, 380.0), (300.0, 380.0));
     assert!(
         fixture
             .canvas
