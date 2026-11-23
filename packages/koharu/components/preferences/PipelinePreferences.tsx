@@ -5,7 +5,6 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Choice } from '@/components/controls/Choice'
-import { ColorWell } from '@/components/controls/ColorWell'
 import { ModelPicker } from '@/components/controls/ModelPicker'
 import {
   NumberField,
@@ -13,7 +12,6 @@ import {
   PreferenceRow,
   PreferenceSection,
 } from '@/components/preferences/PreferenceFields'
-import { toHex, toRgba } from '@/lib/color'
 import { detectors, inpainters, modelName, REASONING, recognizers, vendorOf } from '@/lib/models'
 import { languageNames } from '@/lib/translation'
 import { vendorName } from '@/lib/vendors'
@@ -83,35 +81,6 @@ export function PipelinePreferences({
               />
             ))}
           </div>
-        </PreferenceRow>
-        <PreferenceRow
-          title={t('settings.pipeline.detectTextColors')}
-          description={t('settings.pipeline.textColorHelp')}
-        >
-          <Switch
-            aria-label={t('settings.pipeline.detectTextColors')}
-            checked={detector.detect_text_color ?? true}
-            onCheckedChange={(detect_text_color) =>
-              onChange({ ...value, detector: { ...detector, detect_text_color } })
-            }
-          />
-        </PreferenceRow>
-        <PreferenceRow title={t('settings.pipeline.defaultTextColor')}>
-          <ColorWell
-            label={t('settings.pipeline.defaultTextColor')}
-            allowTransparent
-            disabled={detector.detect_text_color ?? true}
-            value={detector.default_text_color ? toHex(detector.default_text_color) : null}
-            onChange={(color) =>
-              onChange({
-                ...value,
-                detector: {
-                  ...detector,
-                  default_text_color: color === null ? null : toRgba(color),
-                },
-              })
-            }
-          />
         </PreferenceRow>
       </Stage>
       <Stage

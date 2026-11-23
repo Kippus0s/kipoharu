@@ -7,7 +7,7 @@ mod model;
 mod tree;
 
 use koharu_ml::koharu_layout_highres::{Options, Typography};
-use koharu_scene::{Content, Layer, Op, Rgba};
+use koharu_scene::{Content, Layer, Op};
 use rayon::prelude::*;
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _};
 
@@ -20,10 +20,6 @@ use crate::{PipelineConfig, Stage};
 #[derive(specta::Type)]
 pub struct DetectorConfig {
     pub model: Detector,
-    /// None keeps Koharu's original text-colour detection enabled.
-    pub detect_text_color: Option<bool>,
-    /// The fill used instead of the detected ink when detection is disabled.
-    pub default_text_color: Option<Rgba>,
     /// Each class's lowest confidence a detection keeps, from 0 to 1, or the
     /// model's own.
     #[serde(deserialize_with = "threshold")]
@@ -64,8 +60,6 @@ pub(crate) async fn detect(task: &Task, config: &PipelineConfig) -> anyhow::Resu
     };
     let key = key(Stage::Detect, config).expect("a detector is Koharu's");
     let config = config.detector;
-    let detect_text_color = config.detect_text_color.unwrap_or(true);
-    let default_text_color = config.default_text_color;
     let options = Options {
         text: config.text,
         onomatopoeia: config.onomatopoeia,
@@ -93,14 +87,7 @@ pub(crate) async fn detect(task: &Task, config: &PipelineConfig) -> anyhow::Resu
             .par_iter()
             .map(|lettering| lettering.typography(&pixels))
             .collect();
-        layers::additions(
-            &layout,
-            &typography,
-            page,
-            &name,
-            detect_text_color,
-            default_text_color,
-        )
+        layers::additions(&layout, &typography, page, &name)
     })
     .await??;
     member

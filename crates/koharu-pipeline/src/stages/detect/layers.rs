@@ -19,8 +19,6 @@ pub(super) fn additions(
     typography: &[Option<Typography>],
     page: PageId,
     model: &str,
-    detect_text_color: bool,
-    default_text_color: Option<Rgba>,
 ) -> Result<Vec<Op>> {
     let tree = Tree::new(layout);
     let mut adding = Adding {
@@ -28,8 +26,6 @@ pub(super) fn additions(
         typography,
         page,
         model,
-        detect_text_color,
-        default_text_color,
         ops: Vec::new(),
         labels: 0,
     };
@@ -42,8 +38,6 @@ struct Adding<'a> {
     typography: &'a [Option<Typography>],
     page: PageId,
     model: &'a str,
-    detect_text_color: bool,
-    default_text_color: Option<Rgba>,
     ops: Vec<Op>,
     labels: usize,
 }
@@ -70,12 +64,7 @@ impl Adding<'_> {
                 Part::Lettering(at) => {
                     let lettering = &self.layout.lettering[at];
                     (
-                        block(
-                            lettering,
-                            self.typography[at].as_ref(),
-                            self.detect_text_color,
-                            self.default_text_color,
-                        ),
+                        block(lettering, self.typography[at].as_ref()),
                         lettering.score,
                     )
                 }
@@ -196,12 +185,7 @@ fn grown(
 /// A block whose source is the lettering: its box turned back by its tilt,
 /// and the turn, in its direction, at its size, its ink as its fill and its
 /// outline as its stroke.
-fn block(
-    lettering: &Lettering,
-    typography: Option<&Typography>,
-    detect_text_color: bool,
-    default_text_color: Option<Rgba>,
-) -> Value {
+fn block(lettering: &Lettering, typography: Option<&Typography>) -> Value {
     let [x0, y0, x1, y1] = lettering.bbox;
     let (vertical, tilt) = typography.map_or((y1 - y0 > x1 - x0, 0.0), |found| {
         (found.vertical, found.tilt)
@@ -211,14 +195,8 @@ fn block(
         let [red, green, blue] = color.map(|channel| f32::from(channel) / 255.0);
         Rgba([red, green, blue, 1.0])
     };
-    let (fill, outline) = if detect_text_color {
-        (
-            typography.and_then(|found| found.ink).map(opaque),
-            typography.and_then(|found| found.outline),
-        )
-    } else {
-        (default_text_color, None)
-    };
+    let fill = typography.and_then(|found| found.ink).map(opaque);
+    let outline = typography.and_then(|found| found.outline);
     let stroke = outline.map(|outline| opaque(outline.color));
     json!({
         "kind": "block",
