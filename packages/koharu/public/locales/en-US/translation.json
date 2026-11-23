@@ -371,6 +371,9 @@
           "title": "Translator"
         }
       },
+      "detectTextColors": "Detect text and outline colors",
+      "defaultTextColor": "Default text color",
+      "textColorHelp": "Affects newly detected text only. When disabled, translated text defaults to black (or your chosen color). Existing text boxes keep their colors.",
       "thresholds": "Thresholds",
       "title": "Pipeline",
       "translator": {

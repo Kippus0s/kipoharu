@@ -32,4 +32,23 @@ mod tests {
         assert!(parse(serde_json::json!({"detector": {"text": 1.5}})).is_err());
         assert!(parse(serde_json::json!({"translator": {"target": "xx"}})).is_err());
     }
+
+    #[test]
+    fn text_colour_preferences_preserve_defaults_and_round_trip() {
+        let default: PipelineConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(default.detector.detect_text_color, None);
+        assert_eq!(default.detector.default_text_color, None);
+
+        let config = PipelineConfig {
+            detector: DetectorConfig {
+                detect_text_color: Some(false),
+                default_text_color: Some(koharu_scene::Rgba([0.0, 0.0, 0.0, 1.0])),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let serialized = serde_json::to_string(&config).unwrap();
+        let restored: PipelineConfig = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(restored, config);
+    }
 }
