@@ -16,8 +16,11 @@ const HEIGHT: u16 = 96;
 pub async fn preview(family: &str) -> Result<Vec<u8>> {
     let family = family.to_owned();
     tokio::task::spawn_blocking(move || {
-        if let Some(bundled) = catalog::family(&family)? {
-            return catalog::preview(bundled);
+        // An installed font's preview must not require loading the online catalog.
+        if !library::installed(&family) {
+            if let Some(bundled) = catalog::family(&family)? {
+                return catalog::preview(bundled);
+            }
         }
         let font = library::with(|library| library.family(&family))?;
         let fonts = match font.renders(&family) {

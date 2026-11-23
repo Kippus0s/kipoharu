@@ -91,6 +91,7 @@ export function TypesettingPreferences({
               <FontSlot
                 value={primary ?? ''}
                 families={choicesFor(primary ?? '')}
+                excluded={fontFamilies.filter((name) => normalizeFontName(name) !== normalizeFontName(primary ?? ''))}
                 disabled={fonts.isPending}
                 label={t('settings.typesetting.primary')}
                 placeholder={loading ?? t('settings.typesetting.addFamily')}
@@ -115,6 +116,7 @@ export function TypesettingPreferences({
                       id={ids[index + 1] ?? family}
                       family={family}
                       families={choicesFor(family)}
+                      excluded={fontFamilies.filter((name) => normalizeFontName(name) !== normalizeFontName(family))}
                       label={t('settings.typesetting.familyLabel', { index: index + 2 })}
                       onChange={(next) => save(fontFamilies.with(index + 1, next))}
                       onRemove={() => remove(index + 1)}
@@ -124,7 +126,8 @@ export function TypesettingPreferences({
                 <FontSlot
                   value=''
                   families={choicesFor('')}
-                  disabled={fonts.isPending || choicesFor('').length === 0}
+                  excluded={fontFamilies}
+                  disabled={fonts.isPending}
                   label={t('settings.typesetting.addFallback')}
                   placeholder={loading ?? t('settings.typesetting.addFallback')}
                   onChange={(family) => save([...fontFamilies, family])}
@@ -165,6 +168,7 @@ function Fallback({
   id,
   family,
   families,
+  excluded,
   label,
   onChange,
   onRemove,
@@ -172,6 +176,7 @@ function Fallback({
   id: string
   family: string
   families: FontFamily[]
+  excluded: string[]
   label: string
   onChange: (family: string) => void
   onRemove: () => void
@@ -196,6 +201,7 @@ function Fallback({
       <FontSlot
         value={family}
         families={families}
+        excluded={excluded}
         label={label}
         onChange={onChange}
         onRemove={onRemove}
@@ -209,6 +215,7 @@ function Fallback({
 function FontSlot({
   value,
   families,
+  excluded = [],
   disabled,
   label,
   placeholder,
@@ -217,6 +224,7 @@ function FontSlot({
 }: {
   value: string
   families: FontFamily[]
+  excluded?: string[]
   disabled?: boolean
   label: string
   placeholder?: string
@@ -230,6 +238,7 @@ function FontSlot({
         <FontPicker
           value={value}
           families={families}
+          excluded={excluded}
           disabled={disabled}
           ariaLabel={label}
           placeholder={placeholder}

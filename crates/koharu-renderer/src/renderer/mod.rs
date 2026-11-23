@@ -40,10 +40,9 @@ impl Renderer {
     }
 
     /// What the first text would otherwise wait for loads in the background:
-    /// Chinese line breaking's dictionary, the installed fonts, and the
-    /// bundled font catalog. They load once, on a thread of their own rather
-    /// than rayon's global pool, which the app may not have set up yet; should
-    /// the thread fail to start, the first text that needs each loads it.
+    /// Chinese line breaking's dictionary and the installed fonts. The online
+    /// font catalog remains lazy until an online font is requested. These load
+    /// once on their own thread rather than rayon's global pool.
     #[must_use]
     pub fn new(config: RendererConfig) -> Self {
         static PRELOAD: Once = Once::new();

@@ -52,19 +52,40 @@ pub struct FontFace {
     pub italic: bool,
 }
 
+/// Installed Windows/system families only, without loading the downloadable catalog.
+/// A snapshot is enough: the system font collection is itself initialized once.
+fn installed_families() -> &'static Vec<FontFamily> {
+    static INSTALLED: LazyLock<Vec<FontFamily>> = LazyLock::new(|| {
+        library::with(Library::families)
+            .into_iter()
+            .filter(|family| library::installed(&family.name))
+            .collect()
+    });
+    &INSTALLED
+}
+
+pub async fn list_installed() -> Result<Vec<FontFamily>> {
+    Ok(tokio::task::spawn_blocking(|| installed_families().clone()).await?)
+}
+
+/// Downloadable font families. Only the catalog index is fetched here; individual
+/// font files and previews are still loaded on demand.
+pub async fn list_online() -> Result<Vec<FontFamily>> {
+    tokio::task::spawn_blocking(|| -> Result<Vec<FontFamily>> {
+        Ok(catalog::families()?.values().map(catalog::listed).collect())
+    })
+    .await?
+}
+
 /// Every family installed or bundled, by name, upright faces first and then
 /// by weight. An installed family and a bundled one of the same name are
 /// one, and so are an installed face and a bundled one of the same
 /// PostScript name.
 pub async fn list() -> Result<Vec<FontFamily>> {
     tokio::task::spawn_blocking(|| {
-        // Reading every installed face's names loads its file, so it's done
-        // once.
-        static INSTALLED: LazyLock<Vec<FontFamily>> =
-            LazyLock::new(|| library::with(Library::families));
         let bundled = catalog::families()?.values().map(catalog::listed);
         let mut families = BTreeMap::<String, FontFamily>::new();
-        for family in INSTALLED.iter().cloned().chain(bundled) {
+        for family in installed_families().iter().cloned().chain(bundled) {
             let listed = families
                 .entry(normalize(&family.name))
                 .or_insert_with(|| FontFamily {
@@ -159,11 +180,10 @@ pub(crate) fn chain(
     })
 }
 
-/// Lists the installed families and loads the bundled catalog, which the
-/// first text would otherwise wait for.
+/// Prepare installed fonts, but leave the online catalog alone until an
+/// online font is rendered or the user opens the Online Fonts tab.
 pub(crate) fn preload() {
     library::preload();
-    let _ = catalog::families();
 }
 
 /// A family or face name as Koharu matches it: trimmed, in any case.

@@ -34,7 +34,8 @@ export const pageKey = ['page'] as const
 /** Each page Story lists, by its id, whether or not the canvas shows it. */
 export const pagesKey = ['pages'] as const
 export const projectsKey = ['projects'] as const
-export const fontsKey = ['fonts'] as const
+export const fontsKey = ['fonts', 'installed'] as const
+export const onlineFontsKey = ['fonts', 'online'] as const
 export const preferencesKey = ['preferences'] as const
 export const modelsKey = ['models'] as const
 
@@ -132,7 +133,12 @@ const pageQuery = queryOptions({
 
 const fontsQuery = queryOptions({
   queryKey: fontsKey,
-  queryFn: () => commands.listFonts(),
+  queryFn: () => commands.listInstalledFonts(),
+})
+
+const onlineFontsQuery = queryOptions({
+  queryKey: onlineFontsKey,
+  queryFn: () => commands.listOnlineFonts(),
 })
 
 /** The open project, read again after every change the desktop tells. */
@@ -165,8 +171,14 @@ export function usePageStory(page: PageId, enabled = true) {
   })
 }
 
+/** Installed fonts only; looking at this list never downloads the online catalog. */
 export function useFonts(enabled = true) {
   return useQuery({ ...fontsQuery, enabled })
+}
+
+/** The online catalog is fetched only if a picker opens its Online Fonts tab. */
+export function useOnlineFonts(enabled = false) {
+  return useQuery({ ...onlineFontsQuery, enabled })
 }
 
 export function usePreferences() {

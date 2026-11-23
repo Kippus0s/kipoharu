@@ -1054,6 +1054,14 @@ export const commands = {
     runner('sign_out', (options) => invoke<null>('sign_out', { vendor }, options)),
   listFonts: () =>
     runner('list_fonts', (options) => invoke<FontFamily[]>('list_fonts', {}, options)),
+  listInstalledFonts: () =>
+    runner('list_installed_fonts', (options) =>
+      invoke<FontFamily[]>('list_installed_fonts', {}, options),
+    ),
+  listOnlineFonts: () =>
+    runner('list_online_fonts', (options) =>
+      invoke<FontFamily[]>('list_online_fonts', {}, options),
+    ),
   /** `family`'s name set in it, as WebP. */
   getFontPreview: (family: string) =>
     runner('get_font_preview', (options) =>

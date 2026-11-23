@@ -8,7 +8,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import { PickerSearch } from '@/components/controls/PickerSearch'
-import { useFontPreview } from '@/lib/queries'
+import { useFontPreview, useOnlineFonts } from '@/lib/queries'
 import type { FontFamily } from '@koharu/ipc/protocol'
 import { Button } from '@koharu/ui/components/button'
 import {
@@ -28,6 +28,7 @@ import { cn } from '@koharu/ui/lib/utils'
 
 const rowHeight = 38
 const listHeight = 248
+const noExcludedNames: string[] = []
 
 /** The families starred as favorites, by normalized name, and whether the picker lists only them,
  * as Photoshop's font menu keeps favorites and its Show Favorite Fonts filter. Every picker shares
@@ -63,6 +64,7 @@ const useFavoriteFonts = create<{
 export function FontPicker({
   value,
   families,
+  excluded = noExcludedNames,
   disabled,
   size = 'default',
   ariaLabel,
@@ -71,6 +73,8 @@ export function FontPicker({
 }: {
   value: string
   families: FontFamily[]
+  /** Names excluded from the online tab too (e.g. already used fallback fonts). */
+  excluded?: string[]
   disabled?: boolean
   size?: 'default' | 'sm'
   ariaLabel?: string
@@ -79,13 +83,22 @@ export function FontPicker({
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [tab, setTab] = useState<'mine' | 'online'>('mine')
+  const online = useOnlineFonts(open && tab === 'online')
   const list = useRef<{ reveal: (index: number) => void }>(null)
   const orderedFamilies = useMemo(
-    () =>
-      [...families].sort((left, right) =>
+    () => {
+      const candidates = tab === 'mine'
+        ? families
+        : (online.data ?? []).filter(
+            (family) => !excluded.some((name) => normalizeFontName(name) === normalizeFontName(family.name)),
+          )
+      return [...candidates].sort((left, right) =>
         left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }),
-      ),
-    [families],
+      )
+    },
+    [tab, families, online.data, excluded],
   )
   const selectedFamily = useMemo(
     () =>
@@ -119,7 +132,13 @@ export function FontPicker({
         )
       }}
       onInputValueChange={setQuery}
-      onOpenChange={(open) => !open && setQuery('')}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) {
+          setTab('mine')
+          setQuery('')
+        }
+      }}
       onValueChange={(family) => family && onChange(family.name)}
       onItemHighlighted={(_, { reason, index }) => {
         if (reason === 'keyboard') list.current?.reveal(index)
@@ -152,6 +171,28 @@ export function FontPicker({
         )}
       </ComboboxTrigger>
       <ComboboxContent className='w-(--anchor-width) min-w-44'>
+        <div role='tablist' aria-label={t('fontPicker.fonts')} className='flex gap-1 border-b p-1'>
+          {(['mine', 'online'] as const).map((source) => (
+            <button
+              key={source}
+              type='button'
+              role='tab'
+              aria-selected={tab === source}
+              className={cn(
+                'flex-1 rounded-md px-2 py-1 text-[11px] font-medium',
+                tab === source ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted',
+              )}
+              // Keep the combobox search focused when changing sources.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setTab(source)
+                setQuery('')
+              }}
+            >
+              {t(source === 'mine' ? 'fontPicker.myFonts' : 'fontPicker.onlineFonts')}
+            </button>
+          ))}
+        </div>
         <div className='flex items-center gap-1 border-b p-1'>
           <div className='min-w-0 flex-1'>
             <PickerSearch
@@ -180,14 +221,18 @@ export function FontPicker({
           </Tooltip>
         </div>
         <ComboboxEmpty className='py-4'>
-          {only && favorites.length === 0 ? t('fontPicker.noFavorites') : t('fontPicker.noResults')}
+          {tab === 'online' && online.isPending
+            ? t('fontPicker.loadingOnline')
+            : only && favorites.length === 0
+              ? t('fontPicker.noFavorites')
+              : t('fontPicker.noResults')}
         </ComboboxEmpty>
         <ComboboxList
           aria-label={t('fontPicker.fonts')}
           className='max-h-none overflow-visible p-0'
         >
           {/* Anew for each query, so a filtered list starts at its top. */}
-          <FontList key={query} selected={value} ref={list} />
+          <FontList key={`${tab}:${query}`} selected={value} ref={list} />
         </ComboboxList>
       </ComboboxContent>
     </Combobox>

@@ -17,7 +17,7 @@ import {
   letteringOf,
   walkLayers,
 } from '@/lib/document'
-import { readPage, send, useFonts, usePage, usePreferences } from '@/lib/queries'
+import { readPage, send, useFonts, useOnlineFonts, usePage, usePreferences } from '@/lib/queries'
 import { setStyle, updateLayer } from '@/lib/scene'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
 import {
@@ -66,7 +66,9 @@ export function TypeBar() {
   const page = usePage().data
   const selectedIds = useKoharuStore((state) => state.selectedLayers)
   const defaultFont = usePreferences().data?.renderer.font_families?.[0] ?? FALLBACK_FONT
-  const availableFonts = useFonts().data
+  const installedFonts = useFonts().data
+  // Online face metadata is read from the cache, without requesting the catalog.
+  const cachedOnlineFonts = useOnlineFonts(false).data
   const targets = useMemo(() => {
     if (!page) return []
     const leaves = expandLayerSelection(page.layers, selectedIds)
@@ -135,11 +137,11 @@ export function TypeBar() {
   }
 
   const families = useMemo(() => {
-    const available = availableFonts ?? []
+    const available = [...(installedFonts ?? []), ...(cachedOnlineFonts ?? [])]
     return available.some((family) => sameFont(family.name, defaultFont))
       ? available
       : [...available, placeholderFamily(defaultFont)]
-  }, [availableFonts, defaultFont])
+  }, [installedFonts, cachedOnlineFonts, defaultFont])
   const family = mixed.has('family') ? '' : (chars.family ?? defaultFont)
   const selectedFamily = families.find((candidate) => sameFont(candidate.name, family))
   const italics = hasItalic(selectedFamily)
@@ -175,7 +177,7 @@ export function TypeBar() {
       <div className='w-28'>
         <FontPicker
           value={family}
-          families={families}
+          families={installedFonts ?? []}
           size='sm'
           onChange={(next) => {
             const nextFamily = families.find((candidate) => sameFont(candidate.name, next))

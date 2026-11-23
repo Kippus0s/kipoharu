@@ -11,6 +11,18 @@ pub async fn list_fonts() -> Result<Vec<FontFamily>> {
     Ok(fonts::list().await?)
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn list_installed_fonts() -> Result<Vec<FontFamily>> {
+    Ok(fonts::list_installed().await?)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn list_online_fonts() -> Result<Vec<FontFamily>> {
+    Ok(fonts::list_online().await?)
+}
+
 /// `family`'s name set in it, as WebP.
 #[tauri::command]
 #[specta::specta]
