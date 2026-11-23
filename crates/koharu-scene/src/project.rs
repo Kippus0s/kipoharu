@@ -125,38 +125,27 @@ pub(crate) fn locked_inside(layer: &Layer) -> Option<LayerId> {
 /// page's top level. Paths come from `position` and are used before the
 /// tree changes, so a bad one is a bug.
 impl Page {
-    /// The lowest top-level layer containing a panel or balloon is the
-    /// boundary below which newly created text goes. Its descendants stay
-    /// above the new text without moving any existing layers.
-    pub fn text_insert_index(&self) -> usize {
-        fn contains_lettering_container(layer: &Layer) -> bool {
-            matches!(&layer.content, Content::Panel(_) | Content::Balloon(_))
-                || layer.children.iter().any(contains_lettering_container)
+    /// Insert new rasters before the first top-level panel in the page's
+    /// bottom-to-top array: directly below the last Panel in the sidebar.
+    /// If there are no panels, preserve the existing text-aware fallback.
+    /// No existing layers are reordered.
+    pub fn raster_insert_index(&self) -> usize {
+        if let Some(index) = self
+            .layers
+            .iter()
+            .position(|layer| matches!(&layer.content, Content::Panel(_)))
+        {
+            return index;
         }
 
         self.layers
             .iter()
-            .position(contains_lettering_container)
-            .unwrap_or(self.layers.len())
-    }
-
-    /// New rasters sit under the top standalone lettering and under every
-    /// panel/balloon container, including the text added directly below it.
-    /// No existing layer is moved.
-    pub fn raster_insert_index(&self) -> usize {
-        let is_lettering = |layer: &Layer| match &layer.content {
-            Content::Text(_) => true,
-            Content::Block(block) => block.translation.is_some(),
-            _ => false,
-        };
-        let after_last_other = |layers: &[Layer]| {
-            layers
-                .iter()
-                .rposition(|layer| !is_lettering(layer))
-                .map_or(0, |index| index + 1)
-        };
-        let panel = self.text_insert_index();
-        after_last_other(&self.layers).min(after_last_other(&self.layers[..panel]))
+            .rposition(|layer| match &layer.content {
+                Content::Text(_) => false,
+                Content::Block(block) if block.translation.is_some() => false,
+                _ => true,
+            })
+            .map_or(0, |index| index + 1)
     }
 
     /// The path to `id`, if this page's tree holds it.
@@ -368,7 +357,7 @@ mod insertion_tests {
     use crate::{Edit, Op, Session};
 
     #[test]
-    fn new_text_and_rasters_stay_below_nested_panel_lettering()
+    fn new_rasters_go_directly_below_the_last_sidebar_panel()
         -> std::result::Result<(), Box<dyn std::error::Error>>
     {
         let dir = tempfile::tempdir()?;
@@ -380,7 +369,9 @@ mod insertion_tests {
                     "size": {"width": 100, "height": 100}}),
                 json!({"op": "add_layer", "page": "$page", "index": 0,
                     "layer": {"kind": "raster"}}),
-                json!({"op": "add_layer", "id": "$panel", "page": "$page", "index": 1,
+                json!({"op": "add_layer", "page": "$page", "index": 1,
+                    "layer": {"kind": "text", "content": "Manually lowered text"}}),
+                json!({"op": "add_layer", "id": "$panel", "page": "$page", "index": 2,
                     "layer": {"kind": "panel", "outline": "M0 0 L100 0 L100 100 Z"}}),
                 json!({"op": "add_layer", "id": "$balloon", "page": "$page",
                     "parent": "$panel", "index": 0,
@@ -388,8 +379,12 @@ mod insertion_tests {
                 json!({"op": "add_layer", "page": "$page", "parent": "$balloon",
                     "index": 0, "layer": {"kind": "block", "source": {},
                     "translation": {"content": "Panel text"}}}),
-                json!({"op": "add_layer", "page": "$page", "index": 2,
-                    "layer": {"kind": "text", "content": "Old top text"}}),
+                json!({"op": "add_layer", "page": "$page", "index": 3,
+                    "layer": {"kind": "panel", "outline": "M0 0 L60 0 L60 60 Z"}}),
+                json!({"op": "add_layer", "page": "$page", "index": 4,
+                    "layer": {"kind": "raster"}}),
+                json!({"op": "add_layer", "page": "$page", "index": 5,
+                    "layer": {"kind": "text", "content": "New top text"}}),
             ]
             .into_iter()
             .map(serde_json::from_value)
@@ -397,19 +392,9 @@ mod insertion_tests {
         })?;
         let page = changes.pages.added[0];
         let before = session.project().page(page)?.layers.clone();
-        assert_eq!(session.project().page(page)?.text_insert_index(), 1);
-        assert_eq!(session.project().page(page)?.raster_insert_index(), 1);
 
-        // Text inserted under the panel must still stay above a later raster.
-        let index = session.project().page(page)?.text_insert_index();
-        session.apply(Edit {
-            label: "text".into(),
-            ops: vec![serde_json::from_value(json!({
-                "op": "add_layer", "page": page, "index": index,
-                "layer": {"kind": "text", "content": "New text"}
-            }))?],
-        })?;
-        assert_eq!(session.project().page(page)?.raster_insert_index(), 1);
+        // The first Panel from index 0, regardless of texts and rasters elsewhere.
+        assert_eq!(session.project().page(page)?.raster_insert_index(), 2);
         let index = session.project().page(page)?.raster_insert_index();
         session.apply(Edit {
             label: "paint".into(),
@@ -419,12 +404,17 @@ mod insertion_tests {
             }))?],
         })?;
         let after = &session.project().page(page)?.layers;
-        assert_eq!(after.len(), before.len() + 2);
-        assert_eq!(after[0], before[0]);
-        assert_eq!(after[3], before[1]); // The panel, with its nested balloon and block.
-        assert_eq!(after[4], before[2]); // Previous text stays where it was relative to the panel.
-        assert!(matches!(&after[1].content, Content::Raster(_)));
-        assert!(matches!(&after[2].content, Content::Text(_)));
+        assert_eq!(after.len(), before.len() + 1);
+        assert_eq!(after[..2], before[..2]);
+        assert_eq!(after[3..], before[2..]);
+        assert!(matches!(&after[2].content, Content::Raster(_)));
+
+        // No Panel: retain the old rule (insert under top standalone text).
+        let mut no_panels = session.project().page(page)?.clone();
+        no_panels
+            .layers
+            .retain(|layer| !matches!(&layer.content, Content::Panel(_)));
+        assert_eq!(no_panels.raster_insert_index(), 4);
         Ok(())
     }
 }

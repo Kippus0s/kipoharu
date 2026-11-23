@@ -13,14 +13,14 @@ use koharu_scene::{Attributes, Content, LayerId, NewLayer, Op, Opacity, Page, Re
 use ui_events::keyboard::Modifiers;
 
 /// A new layer of `content`, under an id the canvas picks so it can select it.
-/// Raster layers go below top lettering and panel/balloon containers; new
-/// text goes below those containers but above newly inserted rasters.
-/// Neither action reorders existing layers.
+/// Raster layers go immediately below all top-level panels, or below the
+/// top run of text when no panels exist. Other layers still go on top.
+/// Existing layers retain their relative order.
 pub(crate) fn added(page: &Page, content: Content) -> (LayerId, Op) {
-    let index = match &content {
-        Content::Raster(_) => page.raster_insert_index(),
-        Content::Text(_) => page.text_insert_index(),
-        _ => page.layers.len(),
+    let index = if matches!(&content, Content::Raster(_)) {
+        page.raster_insert_index()
+    } else {
+        page.layers.len()
     };
     let id = LayerId(Uuid::now_v7());
     let op = Op::AddLayer {
