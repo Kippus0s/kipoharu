@@ -82,7 +82,10 @@
     "noFavorites": "Избранных шрифтов пока нет",
     "noResults": "Нет шрифтов, соответствующих поиску",
     "removeFavorite": "Удалить {{name}} из избранного",
-    "search": "Искать шрифты"
+    "search": "Искать шрифты",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "Закрыть историю",
@@ -109,7 +112,8 @@
       "set_text": "Изменение текста",
       "set_visibility": "Показ или скрытие",
       "translate": "Перевод",
-      "update_layer": "Изменение слоя"
+      "update_layer": "Изменение слоя",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "История"
   },
@@ -173,7 +177,14 @@
     "textDirection": "Направление текста",
     "translation": "Перевод",
     "type": "Типографика",
-    "vertical": "Вертикально"
+    "vertical": "Вертикально",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "Удалить {{name}}",
@@ -354,7 +365,9 @@
         "reasoningDescription": "Использует рассуждение модели во время перевода.",
         "targetLanguageDescription": "Выберите язык, на который нужно перевести текст.",
         "vision": "Изображения",
-        "visionDescription": "Передаёт изображения страниц языковой модели во время перевода."
+        "visionDescription": "Передаёт изображения страниц языковой модели во время перевода.",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

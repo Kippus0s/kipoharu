@@ -82,7 +82,10 @@
     "noFavorites": "お気に入りのフォントはまだありません",
     "noResults": "この検索に一致するフォントはありません",
     "removeFavorite": "{{name}} をお気に入りから削除",
-    "search": "フォントを検索"
+    "search": "フォントを検索",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "ヒストリーを閉じる",
@@ -109,7 +112,8 @@
       "set_text": "テキストを編集",
       "set_visibility": "表示/非表示",
       "translate": "翻訳",
-      "update_layer": "レイヤーを変更"
+      "update_layer": "レイヤーを変更",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "ヒストリー"
   },
@@ -173,7 +177,14 @@
     "textDirection": "文字方向",
     "translation": "翻訳",
     "type": "タイポグラフィ",
-    "vertical": "縦書き"
+    "vertical": "縦書き",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "{{name}}を削除",
@@ -354,7 +365,9 @@
         "reasoningDescription": "翻訳時にモデルの推論を使用します。",
         "targetLanguageDescription": "テキストの翻訳先言語を選択します。",
         "vision": "ビジョン",
-        "visionDescription": "翻訳時にページ画像をLLMへ入力します。"
+        "visionDescription": "翻訳時にページ画像をLLMへ入力します。",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

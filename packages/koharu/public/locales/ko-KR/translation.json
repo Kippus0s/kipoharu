@@ -82,7 +82,10 @@
     "noFavorites": "아직 즐겨찾는 글꼴이 없습니다",
     "noResults": "검색과 일치하는 글꼴이 없습니다",
     "removeFavorite": "{{name}}을(를) 즐겨찾기에서 제거",
-    "search": "글꼴 검색"
+    "search": "글꼴 검색",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "작업 내역 닫기",
@@ -109,7 +112,8 @@
       "set_text": "텍스트 편집",
       "set_visibility": "표시/숨기기",
       "translate": "번역",
-      "update_layer": "레이어 변경"
+      "update_layer": "레이어 변경",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "작업 내역"
   },
@@ -173,7 +177,14 @@
     "textDirection": "텍스트 방향",
     "translation": "번역",
     "type": "타이포그래피",
-    "vertical": "세로쓰기"
+    "vertical": "세로쓰기",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "{{name}} 삭제",
@@ -354,7 +365,9 @@
         "reasoningDescription": "번역할 때 모델 추론을 사용합니다.",
         "targetLanguageDescription": "텍스트를 번역할 언어를 선택합니다.",
         "vision": "비전",
-        "visionDescription": "번역할 때 LLM에 페이지 이미지를 입력합니다."
+        "visionDescription": "번역할 때 LLM에 페이지 이미지를 입력합니다.",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

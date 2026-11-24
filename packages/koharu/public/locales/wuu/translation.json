@@ -82,7 +82,10 @@
     "noFavorites": "还呒没收藏个字体",
     "noResults": "寻弗着符合条件个字体",
     "removeFavorite": "拿 {{name}} 从收藏里拿脱",
-    "search": "搜寻字体"
+    "search": "搜寻字体",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "关脱历史记录",
@@ -109,7 +112,8 @@
       "set_text": "编辑文字",
       "set_visibility": "显示或者隐藏",
       "translate": "翻译",
-      "update_layer": "改图层"
+      "update_layer": "改图层",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "历史记录"
   },
@@ -173,7 +177,14 @@
     "textDirection": "文本方向",
     "translation": "译文",
     "type": "排版",
-    "vertical": "竖排"
+    "vertical": "竖排",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "删除 {{name}}",
@@ -354,7 +365,9 @@
         "reasoningDescription": "翻译个辰光用模型推理。",
         "targetLanguageDescription": "选译文要用个目标语言。",
         "vision": "视觉",
-        "visionDescription": "翻译个辰光，也拿页面图像输入畀 LLM。"
+        "visionDescription": "翻译个辰光，也拿页面图像输入畀 LLM。",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

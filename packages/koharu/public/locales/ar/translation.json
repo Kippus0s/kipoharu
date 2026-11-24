@@ -82,7 +82,10 @@
     "noFavorites": "لا توجد خطوط مفضلة بعد",
     "noResults": "لا توجد خطوط تطابق هذا البحث",
     "removeFavorite": "إزالة {{name}} من المفضلة",
-    "search": "ابحث عن خطوط"
+    "search": "ابحث عن خطوط",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "إغلاق السجل",
@@ -109,7 +112,8 @@
       "set_text": "تحرير النص",
       "set_visibility": "إظهار أو إخفاء",
       "translate": "الترجمة",
-      "update_layer": "تغيير الطبقة"
+      "update_layer": "تغيير الطبقة",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "السجل"
   },
@@ -173,7 +177,14 @@
     "textDirection": "اتجاه النص",
     "translation": "الترجمة",
     "type": "النوع",
-    "vertical": "عمودي"
+    "vertical": "عمودي",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "حذف {{name}}",
@@ -354,7 +365,9 @@
         "reasoningDescription": "استخدام تفكير النموذج أثناء الترجمة.",
         "targetLanguageDescription": "اختر اللغة التي تُترجم إليها النصوص.",
         "vision": "الرؤية",
-        "visionDescription": "تزويد النموذج اللغوي بصور الصفحات أثناء الترجمة."
+        "visionDescription": "تزويد النموذج اللغوي بصور الصفحات أثناء الترجمة.",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

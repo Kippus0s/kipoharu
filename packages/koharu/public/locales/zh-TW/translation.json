@@ -82,7 +82,10 @@
     "noFavorites": "尚無我的最愛字型",
     "noResults": "沒有符合此搜尋的字型",
     "removeFavorite": "將 {{name}} 從我的最愛移除",
-    "search": "搜尋字型"
+    "search": "搜尋字型",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "關閉步驟記錄",
@@ -109,7 +112,8 @@
       "set_text": "編輯文字",
       "set_visibility": "顯示或隱藏",
       "translate": "翻譯",
-      "update_layer": "變更圖層"
+      "update_layer": "變更圖層",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "步驟記錄"
   },
@@ -173,7 +177,14 @@
     "textDirection": "文字方向",
     "translation": "譯文",
     "type": "排版",
-    "vertical": "直排"
+    "vertical": "直排",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "刪除 {{name}}",
@@ -354,7 +365,9 @@
         "reasoningDescription": "翻譯時使用模型推理。",
         "targetLanguageDescription": "選擇文字要翻譯成的語言。",
         "vision": "視覺",
-        "visionDescription": "翻譯時將頁面影像輸入給 LLM。"
+        "visionDescription": "翻譯時將頁面影像輸入給 LLM。",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

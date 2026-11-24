@@ -82,7 +82,10 @@
     "noFavorites": "Aucune police favorite pour l’instant",
     "noResults": "Aucune police ne correspond à cette recherche",
     "removeFavorite": "Retirer {{name}} des favoris",
-    "search": "Rechercher des polices"
+    "search": "Rechercher des polices",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "Fermer l’historique",
@@ -109,7 +112,8 @@
       "set_text": "Modifier le texte",
       "set_visibility": "Afficher ou masquer",
       "translate": "Traduction",
-      "update_layer": "Modifier le calque"
+      "update_layer": "Modifier le calque",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "Historique"
   },
@@ -173,7 +177,14 @@
     "textDirection": "Sens du texte",
     "translation": "Traduction",
     "type": "Type",
-    "vertical": "Vertical"
+    "vertical": "Vertical",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "Supprimer {{name}}",
@@ -354,7 +365,9 @@
         "reasoningDescription": "Utiliser le raisonnement du modèle pendant la traduction.",
         "targetLanguageDescription": "Choisissez la langue dans laquelle traduire le texte.",
         "vision": "Vision",
-        "visionDescription": "Transmettre les images des pages au LLM pendant la traduction."
+        "visionDescription": "Transmettre les images des pages au LLM pendant la traduction.",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {

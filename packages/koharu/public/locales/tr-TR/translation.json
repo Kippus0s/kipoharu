@@ -82,7 +82,10 @@
     "noFavorites": "Henüz favori yazı tipi yok",
     "noResults": "Bu aramayla eşleşen yazı tipi yok",
     "removeFavorite": "{{name}} yazı tipini favorilerden çıkar",
-    "search": "Yazı tipi ara"
+    "search": "Yazı tipi ara",
+    "myFonts": "My Fonts",
+    "onlineFonts": "Online Fonts",
+    "loadingOnline": "Loading online fonts…"
   },
   "history": {
     "close": "Geçmişi kapat",
@@ -109,7 +112,8 @@
       "set_text": "Metni düzenle",
       "set_visibility": "Göster veya gizle",
       "translate": "Çeviri",
-      "update_layer": "Katmanı değiştir"
+      "update_layer": "Katmanı değiştir",
+      "duplicate_layer": "Duplicate text box"
     },
     "title": "Geçmiş"
   },
@@ -173,7 +177,14 @@
     "textDirection": "Metin yönü",
     "translation": "Çeviri",
     "type": "Tipografi",
-    "vertical": "Dikey"
+    "vertical": "Dikey",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
+    "textFit": "Text fit"
   },
   "layers": {
     "delete": "{{name}} öğesini sil",
@@ -354,7 +365,9 @@
         "reasoningDescription": "Çeviri sırasında model akıl yürütmesini kullanır.",
         "targetLanguageDescription": "Metnin çevrileceği dili seçin.",
         "vision": "Görsel",
-        "visionDescription": "Çeviri sırasında sayfa görsellerini LLM'ye iletir."
+        "visionDescription": "Çeviri sırasında sayfa görsellerini LLM'ye iletir.",
+        "inheritSourceColors": "Use detected text colours",
+        "inheritSourceColorsDescription": "When off, new translations use black text with a 3 px white outline. Detected source colours remain unchanged."
       }
     },
     "providers": {
