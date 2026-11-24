@@ -682,14 +682,32 @@ fn a_remove_stroke_asks_to_inpaint_what_it_covered() {
     fixture.canvas.set_tool(Tool::Remove);
     fixture.canvas.set_brush(brush(8.0, [0.0, 0.0, 0.0, 1.0]));
     let effects = gesture(&mut fixture.canvas, (20.0, 20.0), (40.0, 20.0));
-    let [Effect::Inpaint { page, rect, mask }] = &effects[..] else {
+    let [Effect::Inpaint { page, rect, mask, raster }] = &effects[..] else {
         panic!("{effects:?}");
     };
     assert_eq!(*page, fixture.page);
+    assert_eq!(*raster, None);
     assert!(rect.x <= 16 && rect.y <= 16);
     assert!(rect.x + rect.width as i32 >= 44 && rect.y + rect.height as i32 >= 24);
     let at = ((20 - rect.y) * rect.width as i32 + (30 - rect.x)) as usize;
     assert_eq!(mask[at], 255);
+}
+
+#[test]
+fn a_remove_stroke_targets_the_selected_editable_raster() {
+    let Some(mut fixture) = unscaled_of(
+        (100, 100),
+        vec![json!({"op": "add_layer", "page": "$page", "index": 0,
+            "layer": {"kind": "raster"}})],
+    ) else {
+        return;
+    };
+    let raster = layers(&fixture)[0];
+    fixture.canvas.select(vec![raster]);
+    fixture.canvas.set_tool(Tool::Remove);
+    fixture.canvas.set_brush(brush(8.0, [0.0, 0.0, 0.0, 1.0]));
+    let effects = gesture(&mut fixture.canvas, (20.0, 20.0), (40.0, 20.0));
+    assert!(matches!(effects[..], [Effect::Inpaint { raster: Some(id), .. }] if id == raster));
 }
 
 #[test]

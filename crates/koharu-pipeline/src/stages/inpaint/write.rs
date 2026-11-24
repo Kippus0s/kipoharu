@@ -1,9 +1,9 @@
 //! The ops a run writes: each block's clean-up, or the area's raster and its
 //! mask, with the C2PA action recording what made them.
 
-use anyhow::Result;
-use image::{DynamicImage, RgbImage, imageops};
-use koharu_scene::{Content, Op, PageId, Project, Rect, Ref, Tile};
+use anyhow::{Result, anyhow};
+use image::{DynamicImage, RgbImage, RgbaImage, imageops};
+use koharu_scene::{Content, LayerId, MaskMode, Op, PageId, Project, Rect, Ref, Session, Tile};
 use serde_json::{Value, json};
 
 use super::{
@@ -15,12 +15,13 @@ use crate::stages::action;
 /// The ops for `work`; `made` is the model's action, `name` the area's layer
 /// name.
 pub(super) fn ops(
-    project: &Project,
+    session: &Session,
     page: PageId,
     work: Work,
     made: &Value,
     name: &str,
 ) -> Result<Vec<Op>> {
+    let project = session.project();
     let Work {
         image,
         target,
@@ -30,16 +31,22 @@ pub(super) fn ops(
     match target {
         Target::Blocks(cleanups) => Ok(cleanups
             .iter()
-            .filter(|cleanup| current(project, cleanup))
+            .filter(|cleanup| current(&project, cleanup))
             .flat_map(|cleanup| cleaned(cleanup, &image, &windows, made))
             .collect()),
-        Target::Area { rect, mask } => {
+        Target::Area { rect, mask, raster } => {
             // An area is one region, so an edit model drew it in one window.
             let drawn = match windows.as_slice() {
                 [(window, drawn)] => (window.rect, opaque(drawn)),
                 _ => (rect, rgba(&image, rect, |_, _| 255)),
             };
-            layer(project, page, name, made, drawn, (rect, mask.into_raw()))
+            let limit = (rect, mask.into_raw());
+            if let Some(id) = raster {
+                if let Some(ops) = reused(session, page, id, made, &drawn, &limit)? {
+                    return Ok(ops);
+                }
+            }
+            layer(&project, page, name, made, drawn, limit)
         }
     }
 }
@@ -137,6 +144,115 @@ fn pixels(cleanup: &Cleanup, image: &RgbImage, windows: &[(Window, RgbImage)]) -
     }
 }
 
+/// Applies another Remove stroke to the selected raster, including a Brush raster.
+/// The new result is clipped to the stroke, so earlier paint and cleanup outside
+/// it survive. A Remove raster already has an additive child mask: extend that
+/// mask instead of creating another. With a Brush raster, keep it unmasked.
+/// All writes form one undoable edit, just as a new inpainting raster does.
+fn reused(
+    session: &Session,
+    page: PageId,
+    id: LayerId,
+    made: &Value,
+    drawn: &(Rect, Vec<u8>),
+    limit: &(Rect, Vec<u8>),
+) -> Result<Option<Vec<Op>>> {
+    let project = session.project();
+    let Ok((owner, _)) = project.parent(id) else {
+        return Ok(None);
+    };
+    if owner.id != page {
+        return Ok(None);
+    }
+    let Ok(layer) = project.layer(id) else {
+        return Ok(None);
+    };
+    let Content::Raster(raster) = &layer.content else {
+        return Ok(None);
+    };
+    if !layer.visible || layer.locked {
+        return Ok(None);
+    }
+
+    // A raster with other mask modes cannot be safely extended by a union;
+    // make a new result rather than alter the meaning of its existing masks.
+    let masks: Vec<_> = layer.children.iter().filter_map(|child| {
+        match &child.content {
+            Content::Mask(mask) if child.visible => Some((child, mask)),
+            _ => None,
+        }
+    }).collect();
+    if masks.iter().any(|(child, mask)| child.locked || mask.mode != MaskMode::Add) {
+        return Ok(None);
+    }
+    let (rect, coverage) = limit;
+    let own = Rect {
+        x: rect.x - raster.offset.x,
+        y: rect.y - raster.offset.y,
+        ..*rect
+    };
+    let mut existing = RgbaImage::from_raw(rect.width, rect.height, session.pixels(id, own)?)
+        .ok_or_else(|| anyhow!("the selected raster's pixels are RGBA"))?;
+    let (source_rect, pixels) = drawn;
+    let source = RgbaImage::from_raw(source_rect.width, source_rect.height, pixels.clone())
+        .ok_or_else(|| anyhow!("the inpainted pixels are RGBA"))?;
+
+    // Like the Brush tool, composite only at the covered pixels, not over the
+    // entire model context window (which can be much larger than the stroke).
+    let mut overlay = RgbaImage::new(rect.width, rect.height);
+    for y in 0..rect.height {
+        for x in 0..rect.width {
+            let covered = coverage[(y * rect.width + x) as usize];
+            if covered == 0 {
+                continue;
+            }
+            let (px, py) = (rect.x + x as i32, rect.y + y as i32);
+            if px < source_rect.x || py < source_rect.y {
+                continue;
+            }
+            let (sx, sy) = ((px - source_rect.x) as u32, (py - source_rect.y) as u32);
+            if sx >= source_rect.width || sy >= source_rect.height {
+                continue;
+            }
+            let mut pixel = *source.get_pixel(sx, sy);
+            pixel.0[3] = ((u16::from(pixel.0[3]) * u16::from(covered)) / 255) as u8;
+            overlay.put_pixel(x, y, pixel);
+        }
+    }
+    imageops::overlay(&mut existing, &overlay, 0, 0);
+    let mut ops = vec![Op::WritePixels {
+        layer: Ref::from(id),
+        rect: own,
+        pixels: existing.into_raw(),
+    }];
+
+    // A Remove-created raster shows only where its mask is white. Expand it
+    // for the new stroke; without this, the new generated pixels stay hidden.
+    for (child, mask) in masks {
+        let own = Rect {
+            x: rect.x - mask.offset.x,
+            y: rect.y - mask.offset.y,
+            ..*rect
+        };
+        let mut pixels = session.pixels(child.id, own)?;
+        for (old, &new) in pixels.iter_mut().zip(coverage) {
+            *old = (*old).max(new);
+        }
+        ops.push(Op::WritePixels {
+            layer: Ref::from(child.id),
+            rect: own,
+            pixels,
+        });
+    }
+    ops.push(Op::SetAttribute {
+        layer: Ref::from(id),
+        namespace: "c2pa".to_owned(),
+        key: "inpainting".to_owned(),
+        value: Some(made.clone()),
+    });
+    Ok(Some(ops))
+}
+
 /// The area's new raster, named after its prompt, below the top lettering,
 /// with `drawn` as its pixels and `limit`, the area, as its mask.
 fn layer(
@@ -206,6 +322,88 @@ mod tests {
     use koharu_scene::{Edit, Session};
 
     use super::*;
+
+    /// Removing on a selected Brush raster changes only the covered pixels,
+    /// adds no mask, and stays one independently undoable edit.
+    #[test]
+    fn removing_on_a_brush_raster_reuses_its_pixels_without_a_mask() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let mut session = Session::create(dir.path().join("brush.khr"))?;
+        let setup: Vec<Op> = [
+            json!({"op": "add_page", "id": "$page", "index": 0,
+                "size": {"width": 4, "height": 2}}),
+            json!({"op": "add_layer", "id": "$paint", "page": "$page", "index": 0,
+                "layer": {"kind": "raster"}}),
+            json!({"op": "write_pixels", "layer": "$paint",
+                "rect": {"x": 1, "y": 0, "width": 2, "height": 1},
+                "pixels": [255, 0, 0, 255, 255, 0, 0, 255]}),
+        ].into_iter().map(serde_json::from_value).collect::<std::result::Result<_, _>>()?;
+        let change = session.apply(Edit { label: "paint".to_owned(), ops: setup })?;
+        let page = change.pages.added[0];
+        let raster = change.created.iter().find_map(|item| match item {
+            koharu_scene::Created::Layer { id, .. } => Some(*id),
+            _ => None,
+        }).expect("created the Brush raster");
+        let rect = Rect { x: 1, y: 0, width: 2, height: 1 };
+        let blue = vec![0, 0, 255, 255].repeat(2);
+        let ops = reused(&session, page, raster, &json!({}), &(rect, blue),
+            &(rect, vec![255, 0]))?.expect("reused the Brush raster");
+        assert_eq!(ops.len(), 2, "write pixels and provenance, without a mask");
+        assert!(ops.iter().all(|op| !matches!(op, Op::AddLayer { .. })));
+        session.apply(Edit { label: "remove".to_owned(), ops })?;
+        let painted = session.pixels(raster, rect)?;
+        assert_eq!(painted, [0, 0, 255, 255, 255, 0, 0, 255]);
+        assert!(session.project().layer(raster)?.children.is_empty());
+        session.undo()?;
+        assert_eq!(session.pixels(raster, rect)?, vec![255, 0, 0, 255].repeat(2));
+        session.redo()?;
+        assert_eq!(session.pixels(raster, rect)?, painted);
+        Ok(())
+    }
+
+    /// A selected Remove raster already owns an additive mask. The next
+    /// removal updates that mask rather than adding another layer or mask.
+    #[test]
+    fn removing_on_a_remove_raster_extends_its_existing_mask() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let mut session = Session::create(dir.path().join("masked.khr"))?;
+        let setup: Vec<Op> = [
+            json!({"op": "add_page", "id": "$page", "index": 0,
+                "size": {"width": 3, "height": 1}}),
+            json!({"op": "add_layer", "id": "$raster", "page": "$page", "index": 0,
+                "layer": {"kind": "raster"}}),
+            json!({"op": "add_layer", "id": "$mask", "page": "$page", "index": 0,
+                "parent": "$raster", "layer": {"kind": "mask"}}),
+            json!({"op": "write_pixels", "layer": "$raster",
+                "rect": {"x": 0, "y": 0, "width": 3, "height": 1},
+                "pixels": [255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255]}),
+            json!({"op": "write_pixels", "layer": "$mask",
+                "rect": {"x": 0, "y": 0, "width": 3, "height": 1},
+                "pixels": [255, 0, 0]}),
+        ].into_iter().map(serde_json::from_value).collect::<std::result::Result<_, _>>()?;
+        let change = session.apply(Edit { label: "remove".to_owned(), ops: setup })?;
+        let page = change.pages.added[0];
+        let id = |label: &str| change.created.iter().find_map(|item| match item {
+            koharu_scene::Created::Layer { id, label: Some(found) } if found == label => Some(*id),
+            _ => None,
+        }).expect("created requested layer");
+        let (raster, mask) = (id("raster"), id("mask"));
+        let rect = Rect { x: 0, y: 0, width: 3, height: 1 };
+        let blue = vec![0, 0, 255, 255].repeat(3);
+        let ops = reused(&session, page, raster, &json!({}), &(rect, blue),
+            &(rect, vec![0, 255, 0]))?.expect("reused the Remove raster");
+        assert_eq!(ops.len(), 3, "raster write, mask write, provenance");
+        session.apply(Edit { label: "remove".to_owned(), ops })?;
+        assert_eq!(session.pixels(mask, rect)?, vec![255, 255, 0]);
+        assert_eq!(session.pixels(raster, rect)?,
+            [255, 0, 0, 255, 0, 0, 255, 255, 255, 0, 0, 255]);
+        assert_eq!(session.project().page(page)?.layers.len(), 1);
+        session.undo()?;
+        assert_eq!(session.pixels(mask, rect)?, vec![255, 0, 0]);
+        session.redo()?;
+        assert_eq!(session.pixels(mask, rect)?, vec![255, 255, 0]);
+        Ok(())
+    }
 
     /// A Remove stroke creates its raster under the top text and translated
     /// block, but keeps manually arranged lettering below other layers.

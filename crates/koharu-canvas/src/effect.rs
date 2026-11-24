@@ -22,6 +22,8 @@ pub enum Effect {
         page: PageId,
         rect: koharu_scene::Rect,
         mask: Vec<u8>,
+        /// An editable raster the user selected; otherwise make a new one.
+        raster: Option<LayerId>,
     },
     /// The brush diameter Alt and the wheel ask for, in page pixels; the
     /// host owns the brush, and sets it with `Canvas::set_brush`.

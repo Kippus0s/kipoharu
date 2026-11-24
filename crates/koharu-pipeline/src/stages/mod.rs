@@ -82,6 +82,17 @@ impl Member {
         stage: Stage,
         write: impl FnOnce(&Project) -> anyhow::Result<Vec<Op>> + Send + 'static,
     ) -> anyhow::Result<()> {
+        self.apply_with_session(stage, move |session| write(&session.project()))
+            .await
+    }
+
+    /// Like `apply`, but allows pixel tools to composite the current raster
+    /// content immediately before applying their atomic edit.
+    pub(crate) async fn apply_with_session(
+        &self,
+        stage: Stage,
+        write: impl FnOnce(&Session) -> anyhow::Result<Vec<Op>> + Send + 'static,
+    ) -> anyhow::Result<()> {
         let member = self.clone();
         tokio::task::spawn_blocking(move || {
             let _span = info_span!("write", %stage, page = member.index + 1).entered();
@@ -89,7 +100,7 @@ impl Member {
             if member.cancel.is_cancelled() {
                 return Ok(());
             }
-            let ops = write(&session.project())?;
+            let ops = write(&session)?;
             if !ops.is_empty() {
                 session.apply(Edit {
                     label: stage.to_string(),

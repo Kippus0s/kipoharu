@@ -14,7 +14,7 @@ use koharu_agent::{Agent, McpServer, Tools};
 use koharu_canvas::{Canvas, Effect, Snapshot};
 use koharu_pipeline::{Area, Pipeline, PipelineConfig, Request, RunId, Stage, Target};
 use koharu_renderer::Renderer;
-use koharu_scene::{Change, Edit, PageId, Session};
+use koharu_scene::{Change, Created, Edit, PageId, Session};
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Manager as _};
@@ -250,10 +250,32 @@ impl App {
                             .map(|open| open.name.clone());
                         showing.emit(events::PROJECT, name);
                     }
+                    // The Remove tool creates this labelled raster asynchronously. Select
+                    // it only once the edit has succeeded and the canvas has its new page.
+                    let created = told.iter().rev().flat_map(|change| &change.created).find_map(|made| {
+                        match made {
+                            Created::Layer { id, label: Some(label) } if label == "inpainted" => {
+                                Some(*id)
+                            }
+                            _ => None,
+                        }
+                    });
                     for change in told {
                         showing.emit(events::CHANGE, change);
                     }
-                    shown.map_or(Ok(()), |shown| showing.show(shown))
+                    let result = shown.map_or(Ok(()), |shown| showing.show(shown));
+                    if let Some(layer) = created.filter(|_| result.is_ok()) {
+                        let on_page = showing.project.lock().as_ref().is_some_and(|project| {
+                            project.page.is_some_and(|page| {
+                                project.session.lock().project().parent(layer)
+                                    .is_ok_and(|(owner, _)| owner.id == page)
+                            })
+                        });
+                        if on_page {
+                            showing.screen.select(Arc::clone(&showing), vec![layer]);
+                        }
+                    }
+                    result
                 })
                 .await;
                 if let Err(error) = shown.map_err(anyhow::Error::from).and_then(|result| result) {
@@ -347,12 +369,13 @@ impl App {
                     .and_then(|mut clipboard| clipboard.get_text())
                     .map(|text| self.screen.insert(text.replace("\r\n", "\n")))
                     .context("the clipboard has no text"),
-                Effect::Inpaint { page, rect, mask } => self
+                Effect::Inpaint { page, rect, mask, raster } => self
                     .process(
                         Target::Area {
                             page,
                             area: Area { rect, pixels: mask },
                             prompt: None,
+                            raster,
                         },
                         BTreeSet::from([Stage::Inpaint]),
                         None,

@@ -71,6 +71,7 @@ impl Default for InpainterConfig {
 pub(crate) struct AreaWork {
     pub(crate) area: Area,
     pub(crate) prompt: Option<String>,
+    pub(crate) raster: Option<LayerId>,
 }
 
 /// A page's scan as it's being filled, and what the model redraws in it.
@@ -90,6 +91,7 @@ enum Target {
     Area {
         rect: Rect,
         mask: GrayImage,
+        raster: Option<LayerId>,
     },
 }
 
@@ -120,7 +122,7 @@ pub(crate) async fn inpaint(
         let _span =
             tracing::info_span!("read", stage = %Stage::Inpaint, page = reader.index + 1).entered();
         match &painted {
-            Some(area) => read::area(&reader, &area.area),
+            Some(area) => read::area(&reader, &area.area, area.raster),
             None => read::blocks(&reader),
         }
     })
@@ -159,8 +161,8 @@ pub(crate) async fn inpaint(
     let parameters = (!prompt.trim().is_empty()).then(|| serde_json::json!({"prompt": prompt}));
     let made = action("c2pa.created", &model.to_string(), parameters);
     member
-        .apply(Stage::Inpaint, move |project| {
-            write::ops(project, page, work, &made, &name)
+        .apply_with_session(Stage::Inpaint, move |session| {
+            write::ops(session, page, work, &made, &name)
         })
         .await
 }

@@ -30,14 +30,15 @@ pub enum Target {
     Pages(Vec<PageId>),
     /// Recognition, inpainting, or translation on blocks.
     Blocks(Vec<LayerId>),
-    /// Inpainting only: a new raster layer limited by a layer mask to the
-    /// area, as Photoshop's Generative Fill and Content-Aware Fill write one.
-    /// Its prompt goes ahead of the inpainter section's; LaMa, which takes
-    /// none, ignores it.
+    /// Inpainting a painted area: add to an editable selected raster when
+    /// given, or create a new masked raster otherwise. The prompt goes
+    /// ahead of the inpainter section's; LaMa ignores it.
     Area {
         page: PageId,
         area: Area,
         prompt: Option<String>,
+        #[serde(default)]
+        raster: Option<LayerId>,
     },
 }
 

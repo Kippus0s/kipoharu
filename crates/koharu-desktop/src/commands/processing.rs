@@ -36,6 +36,7 @@ pub async fn fill(
         page,
         area: Area { rect, pixels },
         prompt,
+        raster: None,
     };
     Ok(Some(app.process(
         target,

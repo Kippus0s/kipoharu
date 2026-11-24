@@ -25,13 +25,14 @@ const TOLERANCE: f64 = 0.1;
 /// A brush tool's press starts a stroke: the draw tool's onto the one
 /// selected raster or a new one, the eraser's onto the one selected.
 pub(crate) fn press(cx: &Context, sample: Sample) -> Press {
-    let target = match cx.tool {
-        Tool::Remove => None,
-        _ => cx
-            .selection
-            .single()
-            .filter(|&layer| cx.snapshot.writable(layer).is_some()),
-    };
+    let target = cx.selection.single().filter(|&layer| {
+        cx.snapshot.writable(layer).is_some()
+            && (cx.tool != Tool::Remove
+                || matches!(
+                    cx.snapshot.layer(layer).map(|layer| &layer.content),
+                    Some(Content::Raster(_))
+                ))
+    });
     if cx.tool == Tool::Eraser && target.is_none() {
         return Press::answers(vec![Effect::Notice(Notice::EraserNeedsRaster)]);
     }
@@ -80,6 +81,7 @@ impl Stroke {
                 page,
                 rect,
                 mask: coverage,
+                raster: self.target,
             }]);
         }
         self.stroked(cx, rect, &coverage)

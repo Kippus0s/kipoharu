@@ -47,7 +47,7 @@ pub(super) fn blocks(member: &Member) -> Result<Option<Work>> {
 /// builds on them. Text is left out, as Clip Studio Paint's tools that refer
 /// to other layers can leave out text layers, since it changes after and
 /// would stay baked into the fill. A page without a scan has nothing to fill.
-pub(super) fn area(member: &Member, area: &Area) -> Result<Option<Work>> {
+pub(super) fn area(member: &Member, area: &Area, raster: Option<LayerId>) -> Result<Option<Work>> {
     let Some(image) = drawn(member)? else {
         return Ok(None);
     };
@@ -61,7 +61,7 @@ pub(super) fn area(member: &Member, area: &Area) -> Result<Option<Work>> {
         image,
         mask,
         regions: vec![Region { rect, panel: None }],
-        target: Target::Area { rect, mask: limit },
+        target: Target::Area { rect, mask: limit, raster },
         windows: Vec::new(),
     }))
 }
@@ -316,7 +316,7 @@ mod tests {
             },
             pixels: vec![255; 128 * 64],
         };
-        let work = super::area(&member, &area)
+        let work = super::area(&member, &area, None)
             .expect("the area read")
             .expect("work on a page with a scan");
         assert_eq!(work.image.get_pixel(32, 32).0, [0; 3], "the paint shows");

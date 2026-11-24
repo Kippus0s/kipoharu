@@ -851,16 +851,16 @@ export type Target =
   /**  Recognition, inpainting, or translation on blocks. */
   | ({ blocks: LayerId[] } & { area?: never; pages?: never })
   /**
-   *  Inpainting only: a new raster layer limited by a layer mask to the
-   *  area, as Photoshop's Generative Fill and Content-Aware Fill write one.
-   *  Its prompt goes ahead of the inpainter section's; LaMa, which takes
-   *  none, ignores it.
+   *  Inpainting a painted area: add to an editable selected raster when
+   *  given, or create a new masked raster otherwise. The prompt goes
+   *  ahead of the inpainter section's; LaMa ignores it.
    */
   | ({
       area: {
         page: PageId
         area: Area
         prompt: string | null
+        raster?: LayerId | null
       }
     } & { blocks?: never; pages?: never })
 
