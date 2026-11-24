@@ -18,6 +18,7 @@ import { send, usePage } from '@/lib/queries'
 import { deleteSelection } from '@/lib/scene'
 import { shortcuts, toolKeys } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
+import { useWorkspaceShortcuts } from '@/lib/workspaceShortcuts'
 import { commands, type LayerId, type Rgba } from '@koharu/ipc/protocol'
 
 /** A command's shortcut matches the letter its key types, and keeps the key from the webview. */
@@ -36,6 +37,7 @@ const nudges: Record<string, [number, number] | undefined> = {
  * wherever this element and its ancestors paint nothing, and takes the pointer there; the
  * interface sets its tool, brush, and colours, and hears its camera and selection. */
 export function CanvasWorkspace() {
+  useWorkspaceShortcuts()
   const { t } = useTranslation()
   const surface = useRef<HTMLDivElement>(null)
   const page = usePage().data

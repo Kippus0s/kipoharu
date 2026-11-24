@@ -497,5 +497,12 @@
     "maximize": "Ekranı kapla",
     "minimize": "Simge durumuna küçült",
     "restore": "Geri yükle"
+  },
+  "typeBarWorkspace": {
+    "drag": "Drag to move TypeBar (arrow keys also work)",
+    "pin": "Pin TypeBar here",
+    "unpin": "Unpin and reset TypeBar position",
+    "hide": "Hide TypeBar (F8)",
+    "show": "Show TypeBar (F8)"
   }
 }

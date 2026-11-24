@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next'
 import { Choice } from '@/components/controls/Choice'
 import { ColorWell } from '@/components/controls/ColorWell'
 import { FontPicker, useFavoriteFonts } from '@/components/controls/FontPicker'
-import { ContextBar } from '@/components/editor/ContextBar'
+import { MovableTypeBar } from '@/components/editor/MovableTypeBar'
 import { toHex, toRgba } from '@/lib/color'
 import {
   expandLayerSelection,
@@ -232,7 +232,7 @@ export function TypeBar() {
   const toggle =
     'h-6 w-6 min-w-6 rounded-md bg-background px-0 text-muted-foreground data-[pressed]:border-primary data-[pressed]:bg-primary data-[pressed]:text-primary-foreground data-[pressed]:hover:bg-primary/90'
   return (
-    <ContextBar
+    <MovableTypeBar
       bounds={selectionBounds}
       aria-label={t('inspector.type')}
       data-testid='type-bar'
@@ -448,7 +448,7 @@ export function TypeBar() {
           />
         </div>
       </div>
-    </ContextBar>
+    </MovableTypeBar>
   )
 }
 

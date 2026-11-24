@@ -1,7 +1,6 @@
 'use client'
 
 import { BookOpenText, Bot, Layers3 } from 'lucide-react'
-import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 
 import { AgentPanel } from '@/components/editor/AgentPanel'
@@ -30,16 +29,11 @@ export function RightSidebar() {
   // Photoshop's key for Layers, which shows Story in its place when it's in front. It works from a
   // field too, where it types nothing: an input method's own F7 doesn't come as that key.
   const next = panel === 'layers' ? 'story' : 'layers'
-  useHotkeys(shortcuts.layers, () => showPanel(next), {
-    preventDefault: true,
-    useKey: true,
-    enableOnFormTags: true,
-  })
   // The shown tab in the accent colour, hovered or not, its underline too.
   const tab =
     'h-7 flex-none gap-1 px-1.5 text-[10px] font-semibold after:bg-primary data-active:text-primary data-active:hover:text-primary [&_svg]:size-3'
   return (
-    <aside className='flex h-full min-h-0 flex-col bg-[var(--surface-panel)]'>
+    <aside data-workspace-sidebar className='flex h-full min-h-0 flex-col bg-[var(--surface-panel)]'>
       <Tabs
         value={panel}
         onValueChange={(next) => showPanel(next as Panel)}

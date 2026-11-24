@@ -17,6 +17,7 @@ export const shortcuts = {
   fit: 'mod+0',
   /** Photoshop's Layers panel. */
   layers: 'f7',
+  typeBar: 'f8',
   delete: 'delete',
 } as const
 
