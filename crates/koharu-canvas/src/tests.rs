@@ -971,6 +971,87 @@ fn a_wheel_pans_by_lines_or_pixels_and_ctrl_zooms_about_the_pointer() {
 }
 
 #[test]
+fn alt_wheel_sizes_selected_text_with_each_type_bar_tool() {
+    let Some(mut fixture) = unscaled(typed_text(json!("Hello"))) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    for tool in [Tool::Select, Tool::DirectSelect, Tool::Text] {
+        fixture.canvas.set_tool(tool);
+        fixture.canvas.select(vec![text]);
+        let before = fixture.canvas.camera();
+        for (delta, size) in [(-1.0, 41.0), (1.0, 40.0)] {
+            let effects = fixture
+                .canvas
+                .input(scroll(
+                    (200.0, 200.0),
+                    ScrollDelta::LineDelta(0.0, delta),
+                    Modifiers::ALT,
+                ))
+                .expect("input");
+            assert_eq!(apply(&mut fixture, effects), ["set_style"]);
+            assert_eq!(layer(&fixture, text)["style"]["chars"]["size"], json!(size));
+            assert_eq!(fixture.canvas.camera(), before);
+        }
+    }
+}
+
+#[test]
+fn alt_wheel_sizes_a_selected_block_translation() {
+    let Some(mut fixture) = unscaled(vec![
+        json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {
+            "kind": "block", "source": {"content": "やあ"}, "translation": {
+                "content": "Hi", "style": {"chars": {"size": 40}},
+                "frame": {"box": {"bounds": {"x": 0, "y": 0, "width": 100, "height": 60}, "fit": "best"}},
+            },
+        }}),
+    ]) else {
+        return;
+    };
+    let block = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Select);
+    fixture.canvas.select(vec![block]);
+    let before = fixture.canvas.camera();
+    let effects = fixture
+        .canvas
+        .input(scroll(
+            (200.0, 200.0),
+            ScrollDelta::LineDelta(0.0, -1.0),
+            Modifiers::ALT,
+        ))
+        .expect("input");
+    assert_eq!(apply(&mut fixture, effects), ["set_style"]);
+    let translation = &layer(&fixture, block)["translation"];
+    assert_eq!(translation["style"]["chars"]["size"], json!(41.0));
+    assert_eq!(translation["frame"]["box"]["fit"], json!("none"));
+    assert_eq!(fixture.canvas.camera(), before);
+}
+
+#[test]
+fn alt_wheel_leaves_active_typing_alone() {
+    let Some(mut fixture) = unscaled(typed_text(json!("Hello"))) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    assert!(fixture.canvas.is_typing());
+    let before = fixture.canvas.camera();
+    let effects = fixture
+        .canvas
+        .input(scroll(
+            (200.0, 200.0),
+            ScrollDelta::LineDelta(0.0, -1.0),
+            Modifiers::ALT,
+        ))
+        .expect("input");
+    assert!(effects.is_empty());
+    assert!(fixture.canvas.is_typing());
+    assert_eq!(layer(&fixture, text)["style"]["chars"]["size"], json!(40.0));
+    assert_eq!(fixture.canvas.camera(), before);
+}
+
+#[test]
 fn a_pinch_zooms_about_where_it_is() {
     let Some(mut fixture) = unscaled(Vec::new()) else {
         return;

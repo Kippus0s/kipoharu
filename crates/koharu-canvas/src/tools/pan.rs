@@ -1,15 +1,20 @@
 //! Moving the view: the pan gesture, the wheel, and pinch. Each answers the
 //! camera it wants, which the canvas clamps.
 
+use koharu_scene::{Content, Edit, Fit, Frame, Op, PathFit, Ref};
 use kurbo::{Point, TranslateScale, Vec2};
+use serde_json::json;
 use ui_events::ScrollDelta;
 
 use super::command;
-use crate::{Effect, gesture::Context, view::Sample};
+use crate::{Effect, Tool, gesture::Context, view::Sample};
 
 /// How far Alt and a notch of the wheel change the brush, in page pixels,
 /// as the editor's did.
 const BRUSH_STEP: f64 = 4.0;
+
+/// A wheel notch changes selected lettering by one point.
+const TEXT_STEP: f64 = 1.0;
 
 /// How far a device-independent pixel of wheel zooms, as the editor's
 /// canvas zoomed: `exp(-Δy × 0.0015)`.
@@ -44,7 +49,7 @@ impl Pan {
 
 /// The wheel pans, by a line or a page as a browser scrolls one; with Ctrl
 /// or Command it zooms about the pointer, and with Alt and a brush tool it
-/// steps the brush.
+/// steps the brush, or adjusts selected text with the selection or Text tools.
 pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Effect> {
     let line = LINE * cx.view.scale();
     let page = cx.view.size();
@@ -63,6 +68,78 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
         };
         let diameter = (cx.brush.diameter + step).clamp(1.0, size.width.max(size.height).max(1.0));
         return vec![Effect::BrushDiameter(diameter)];
+    }
+    if modifiers.alt()
+        && matches!(cx.tool, Tool::Select | Tool::DirectSelect | Tool::Text)
+        && delta.y != 0.0
+    {
+        let step = if delta.y < 0.0 { TEXT_STEP } else { -TEXT_STEP };
+        let ops: Vec<Op> = cx
+            .selection
+            .ids()
+            .iter()
+            .flat_map(|id| {
+                let Some(layer) = cx.snapshot.layer(*id) else {
+                    return Vec::new();
+                };
+                if layer.locked {
+                    return Vec::new();
+                }
+                let (text, translation) = match &layer.content {
+                    Content::Text(text) => (text.as_ref(), false),
+                    Content::Block(block) => match block.translation.as_ref() {
+                        Some(text) => (text, true),
+                        None => return Vec::new(),
+                    },
+                    _ => return Vec::new(),
+                };
+                let old = text.style.chars.size.unwrap_or(24.0);
+                let size = (old + step).clamp(0.5, 1296.0);
+                if size == old {
+                    return Vec::new();
+                }
+                // Like the size field in TypeBar, manual sizing disables automatic fitting.
+                let mut patch = json!({"style": {"chars": {"size": size}}});
+                match &text.frame {
+                    Frame::Box { fit, .. } if *fit != Fit::None && *fit != Fit::Grow => {
+                        patch["frame"] = json!({"box": {"fit": "none"}});
+                    }
+                    Frame::Path { fit, .. } if *fit != PathFit::None => {
+                        patch["frame"] = json!({"path": {"fit": "none"}});
+                    }
+                    _ => {}
+                }
+                if translation {
+                    patch = json!({"translation": patch});
+                }
+                let layer = Ref::from(*id);
+                let mut ops = vec![Op::UpdateLayer {
+                    layer: layer.clone(),
+                    patch,
+                }];
+                // Span-specific sizes override the text's base style; clear them as TypeBar does.
+                if text.content.0.iter().any(|span| span.attributes.size.is_some()) {
+                    let spans = text
+                        .content
+                        .0
+                        .iter()
+                        .cloned()
+                        .map(|mut span| {
+                            span.attributes.size = None;
+                            span
+                        })
+                        .collect();
+                    ops.push(Op::SetRichText { layer, spans });
+                }
+                ops
+            })
+            .collect();
+        if !ops.is_empty() {
+            return vec![Effect::Edit(Edit {
+                label: "set_style".to_owned(),
+                ops,
+            })];
+        }
     }
     let camera = match command(modifiers) {
         true => cx.view.zoomed(

@@ -511,9 +511,15 @@ impl Canvas {
             }
             PointerEvent::Scroll(PointerScrollEvent { delta, state, .. }) => {
                 let sample = self.view.sample(&state);
-                match self.context() {
-                    Some(cx) => tools::pan::wheel(&cx, sample, delta),
-                    None => Vec::new(),
+                // While a text caret is active, its draft must not be overwritten by a
+                // separate style edit to the underlying layer.
+                if self.tool == Tool::Text && self.typing.is_some() && sample.modifiers.alt() {
+                    Vec::new()
+                } else {
+                    match self.context() {
+                        Some(cx) => tools::pan::wheel(&cx, sample, delta),
+                        None => Vec::new(),
+                    }
                 }
             }
             PointerEvent::Gesture(PointerGestureEvent { gesture, state, .. }) => {
