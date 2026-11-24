@@ -15,6 +15,8 @@ export const shortcuts = {
   deselect: 'mod+d',
   /** Fit on Screen. */
   fit: 'mod+0',
+  /** Photoshop's Layers panel. */
+  layers: 'f7',
   delete: 'delete',
 } as const
 
