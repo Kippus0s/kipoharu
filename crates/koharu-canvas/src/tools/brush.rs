@@ -159,7 +159,7 @@ impl Stroke {
             }
             None if self.tool == Tool::Draw => {
                 let pixels = paint(rect, coverage, cx.brush.color).into_raw();
-                let (id, add) = added(cx.snapshot.page(), Content::Raster(Raster::default()));
+                let (id, add) = added(cx.snapshot.page(), None, Content::Raster(Raster::default()));
                 let write = Op::WritePixels {
                     layer: Ref::from(id),
                     rect,

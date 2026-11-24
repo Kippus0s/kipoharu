@@ -1,5 +1,6 @@
 //! Each tool's presses and the gestures they start.
 
+pub(crate) mod block;
 pub(crate) mod brush;
 pub(crate) mod direct;
 pub(crate) mod mark;
@@ -9,15 +10,16 @@ pub(crate) mod select;
 pub(crate) mod text;
 pub(crate) mod transform;
 
-use koharu_scene::{Attributes, Content, LayerId, NewLayer, Op, Opacity, Page, Ref, Uuid};
+use koharu_scene::{Attributes, Content, Layer, LayerId, NewLayer, Op, Opacity, Page, Ref, Uuid};
 use ui_events::keyboard::Modifiers;
 
-/// A new layer of `content`, under an id the canvas picks so it can select it.
-/// Raster layers go immediately below all top-level panels, or below the
-/// top run of text when no panels exist. Other layers still go on top.
-/// Existing layers retain their relative order.
-pub(crate) fn added(page: &Page, content: Content) -> (LayerId, Op) {
-    let index = if matches!(&content, Content::Raster(_)) {
+/// Add a layer inside its holder or on the page.
+/// Top-level rasters retain Kipoharu's custom ordering.
+/// Other layers are added at the top of their container.
+pub(crate) fn added(page: &Page, holder: Option<&Layer>, content: Content) -> (LayerId, Op) {
+    let index = if let Some(holder) = holder {
+        holder.children.len()
+    } else if matches!(&content, Content::Raster(_)) {
         page.raster_insert_index()
     } else {
         page.layers.len()
@@ -26,7 +28,7 @@ pub(crate) fn added(page: &Page, content: Content) -> (LayerId, Op) {
     let op = Op::AddLayer {
         id: Some(Ref::from(id)),
         page: Ref::from(page.id),
-        parent: None,
+        parent: holder.map(|holder| Ref::from(holder.id)),
         index,
         layer: Box::new(NewLayer {
             name: String::new(),
