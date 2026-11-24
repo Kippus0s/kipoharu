@@ -2,17 +2,17 @@
 
 import { useMutation } from '@tanstack/react-query'
 import { defaultRangeExtractor, observeElementRect, useVirtualizer } from '@tanstack/react-virtual'
-import { Languages, MoreHorizontal } from 'lucide-react'
+import { EyeOff, Languages, MoreHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CommitTextarea } from '@/components/controls/CommitTextarea'
 import {
-  findLayer,
   isBlockLayer,
   isLockedLayer,
   isTextLayer,
   plainText,
+  walkLayers,
   type BlockLayer,
   type TextLayer,
 } from '@/lib/document'
@@ -33,8 +33,9 @@ import { cn } from '@koharu/ui/lib/utils'
 
 /** Every page's texts in page order, each page's in the scene's reading order, as Clip Studio
  * Paint EX's Story Editor shows a work's text: a block's source and translation, and a text
- * layer's text, the hidden ones left out, each numbered as the canvas numbers it while Story shows.
- * A page's texts load as the list reaches them. Editing a field edits its layer; focusing it
+ * layer's text, including hidden layers. Visible texts keep their canvas reading order and numbers;
+ * hidden texts follow them. A page's texts load as the list reaches them. Editing a field edits its
+ * layer; focusing it
  * selects the layer, showing its page first when the canvas shows another, as the page rail does.
  * Scrolling only browses: the list scrolls to the page the canvas shows when that changes, unless
  * the change came from the list itself. */
@@ -124,20 +125,20 @@ function StoryPage({ page, number, shown }: { page: PageId; number: number; show
   const { t } = useTranslation()
   const data = usePageStory(page).data
   const show = useShowPage()
-  // The scene's order, each text found in the page as it shows; one the page doesn't have yet,
-  // between the two reads of a change, waits for the next.
-  const texts = useMemo(
-    () =>
-      data
-        ? data.story.flatMap((id) => {
-            const placed = findLayer(data.page.layers, id)
-            return placed && (isBlockLayer(placed.layer) || isTextLayer(placed.layer))
-              ? [{ layer: placed.layer, locked: isLockedLayer(placed) }]
-              : []
-          })
-        : [],
-    [data],
-  )
+  // Keep the scene's visible reading order and append the texts it leaves out.
+  // Walk the entire tree so hiding a parent does not hide its Story fields.
+  const texts = useMemo(() => {
+    if (!data) return []
+    const numbers = new Map(data.story.map((id, index) => [id, index + 1] as const))
+    const entries = walkLayers(data.page.layers).flatMap((placed) => {
+      const { layer } = placed
+      return isBlockLayer(layer) || isTextLayer(layer)
+        ? [{ layer, locked: isLockedLayer(placed), number: numbers.get(layer.id) ?? null }]
+        : []
+    })
+    const last = data.story.length + 1
+    return entries.sort((a, b) => (a.number ?? last) - (b.number ?? last))
+  }, [data])
 
   return (
     <section className='grid gap-1 pb-3'>
@@ -154,12 +155,12 @@ function StoryPage({ page, number, shown }: { page: PageId; number: number; show
           {t('navigator.pageNumber', { number })}
         </Button>
       </h3>
-      {texts.map(({ layer, locked }, index) => (
+      {texts.map(({ layer, locked, number }) => (
         <StoryText
           key={layer.id}
           page={page}
           shown={shown}
-          number={index + 1}
+          number={number}
           layer={layer}
           locked={locked}
         />
@@ -172,8 +173,20 @@ function StoryPage({ page, number, shown }: { page: PageId; number: number; show
 }
 
 /** A text's place in reading order, as a badge: filled for dialogue, outlined for a sound
- * effect, as the canvas draws it while Story shows. */
-function ReadingNumber({ number, sfx }: { number: number; sfx: boolean }) {
+ * effect, as the canvas draws it while Story shows. Hidden texts have no canvas number. */
+function ReadingNumber({ number, sfx }: { number: number | null; sfx: boolean }) {
+  if (number === null) {
+    return (
+      <span
+        title='Hidden on canvas'
+        role='img'
+        aria-label='Hidden on canvas'
+        className='inline-grid h-4 min-w-4 place-items-center text-muted-foreground'
+      >
+        <EyeOff className='size-3' aria-hidden='true' />
+      </span>
+    )
+  }
   return (
     <span
       className={cn(
@@ -200,7 +213,7 @@ function StoryText({
   page: PageId
   /** Its page is the one the canvas shows. */
   shown: boolean
-  number: number
+  number: number | null
   layer: BlockLayer | TextLayer
   locked: boolean
 }) {
@@ -251,7 +264,7 @@ function StoryText({
       className='group grid grid-cols-[auto_minmax(0,1fr)] gap-1 rounded-md p-1 data-[selected=true]:bg-accent'
       onFocus={focus}
       // The canvas outlines only the texts of the page it shows.
-      onPointerEnter={() => shown && setStoryHover(layer.id)}
+      onPointerEnter={() => shown && number !== null && setStoryHover(layer.id)}
       onPointerLeave={() => setStoryHover(null)}
     >
       <div className='flex flex-col items-center gap-1'>
