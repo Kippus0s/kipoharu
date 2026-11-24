@@ -2,8 +2,9 @@
 //! session holds the rich text as typed, its caret and selection, the style
 //! held for what's typed next, and the input method's composition. The
 //! renderer lays it out on every change, the canvas draws it in place of the
-//! layer, and leaving commits it as one step, as Photoshop's "Edit Type
-//! Layer". Offsets are UTF-8 offsets into its characters.
+//! layer, and leaving commits it as one project step. Within the session,
+//! undo and redo restore individual text edits. Offsets are UTF-8 offsets
+//! into its characters.
 
 mod keys;
 mod style;
@@ -22,6 +23,8 @@ use crate::{Effect, tools::added};
 
 /// How long the caret shows, and then hides, as Windows blinks one.
 const BLINK: u128 = 530;
+/// Bound the snapshots retained by an active editing session.
+const TEXT_UNDO_LIMIT: usize = 512;
 
 /// What a session types into.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -42,6 +45,17 @@ struct Composition {
     selected: Option<Range<usize>>,
 }
 
+/// A local text undo step. Rich text keeps all per-character formatting;
+/// caret and anchor restore the selection before the operation as well.
+#[derive(Clone)]
+struct TextState {
+    content: RichText,
+    caret: usize,
+    anchor: usize,
+    held: Option<CharStyle>,
+    goal: Option<f64>,
+}
+
 pub(crate) struct Typing {
     renderer: Renderer,
     target: Target,
@@ -57,6 +71,10 @@ pub(crate) struct Typing {
     /// The marks the next character typed takes, set at the caret.
     held: Option<CharStyle>,
     composition: Option<Composition>,
+    /// Before an IME composition began; its preview isn't an undo step.
+    composition_start: Option<TextState>,
+    undo: Vec<TextState>,
+    redo: Vec<TextState>,
     /// Where moving up and down keeps the caret along the lines.
     goal: Option<f64>,
     /// When the caret last moved, which it blinks from.
@@ -112,6 +130,9 @@ impl Typing {
             anchor: 0,
             held: None,
             composition: None,
+            composition_start: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
             goal: None,
             since: Instant::now(),
             version: 0,
@@ -263,8 +284,68 @@ impl Typing {
         self.content.marks_at(at)
     }
 
+    /// Capture a local editing state, independent of the project's history.
+    fn state(&self) -> TextState {
+        TextState {
+            content: self.content.clone(),
+            caret: self.caret,
+            anchor: self.anchor,
+            held: self.held.clone(),
+            goal: self.goal,
+        }
+    }
+
+    /// Keep one snapshot per content-changing operation. A navigation or a
+    /// no-op must not consume an undo step or invalidate redo.
+    fn record(&mut self, before: TextState) {
+        if before.content == self.content {
+            return;
+        }
+        if self.undo.len() == TEXT_UNDO_LIMIT {
+            self.undo.remove(0);
+        }
+        self.undo.push(before);
+        self.redo.clear();
+    }
+
+    fn restore(&mut self, state: TextState) -> anyhow::Result<()> {
+        self.content = state.content;
+        self.caret = state.caret;
+        self.anchor = state.anchor;
+        self.held = state.held;
+        self.goal = state.goal;
+        self.composition = None;
+        self.composition_start = None;
+        self.relay()
+    }
+
+    /// Undo only this active typing session, not the project's prior edits.
+    pub fn undo(&mut self) -> anyhow::Result<()> {
+        self.settle();
+        if let Some(previous) = self.undo.pop() {
+            self.redo.push(self.state());
+            self.restore(previous)?;
+        }
+        Ok(())
+    }
+
+    pub fn redo(&mut self) -> anyhow::Result<()> {
+        self.settle();
+        if let Some(next) = self.redo.pop() {
+            self.undo.push(self.state());
+            self.restore(next)?;
+        }
+        Ok(())
+    }
+
     /// Types `text` over the selection.
     pub fn insert(&mut self, text: &str) -> anyhow::Result<()> {
+        // A text-input commit may follow compose("", None): replace the
+        // whole composition/selection as one undoable operation.
+        if self.composition.is_some() {
+            self.settle();
+        }
+        let before = self.composition_start.take().unwrap_or_else(|| self.state());
         let range = self.selected();
         let marks = self.marks();
         self.content = self.content.spliced(range.clone(), text, &marks);
@@ -272,12 +353,14 @@ impl Typing {
         self.anchor = self.caret;
         self.held = None;
         self.goal = None;
+        self.record(before);
         self.relay()
     }
 
     /// Deletes the selection, or the grapheme or word beside the caret,
     /// before it unless `forward`.
     pub fn delete(&mut self, forward: bool, word: bool) -> anyhow::Result<()> {
+        self.settle();
         let mut range = self.selected();
         if range.is_empty() {
             let plain = self.content.text();
@@ -291,12 +374,14 @@ impl Typing {
         if range.is_empty() {
             return Ok(());
         }
+        let before = self.state();
         self.content = self
             .content
             .spliced(range.clone(), "", &CharStyle::default());
         self.caret = range.start;
         self.anchor = range.start;
         self.goal = None;
+        self.record(before);
         self.relay()
     }
 
@@ -402,21 +487,36 @@ impl Typing {
     /// Styles the selection with `patch`'s values; at a caret, holds them
     /// for what's typed next, as Photoshop's Character panel does.
     pub fn style(&mut self, patch: &CharStyle) -> anyhow::Result<()> {
+        self.settle();
         let range = self.selected();
         if range.is_empty() {
             self.held = Some(patch.or(&self.marks()));
             self.touch();
             return Ok(());
         }
+        let before = self.state();
         self.content = self.content.marked(range, patch);
+        self.record(before);
         self.relay()
     }
 
     /// The input method's text as it composes, empty when it stops; it
     /// replaces the selection.
     pub fn compose(&mut self, text: &str, selected: Option<Range<usize>>) -> anyhow::Result<()> {
-        if self.composition.is_none() && !self.selected().is_empty() && !text.is_empty() {
-            self.delete(false, false)?;
+        if self.composition.is_none() && !text.is_empty() {
+            // IME updates are previews. Save the state from before any
+            // selection replacement, and record one step at input commit.
+            if self.composition_start.is_none() {
+                self.composition_start = Some(self.state());
+            }
+            let range = self.selected();
+            if !range.is_empty() {
+                self.content = self.content.spliced(range.clone(), "", &CharStyle::default());
+                self.caret = range.start;
+                self.anchor = range.start;
+                self.held = None;
+                self.goal = None;
+            }
         }
         self.composition = (!text.is_empty()).then(|| Composition {
             text: text.to_owned(),
@@ -427,13 +527,19 @@ impl Typing {
 
     /// Types what the input method composed, as a press or leaving it does.
     fn settle(&mut self) {
+        let before = self.composition_start.take();
         if let Some(composition) = self.composition.take() {
+            let before = before.unwrap_or_else(|| self.state());
             let marks = self.marks();
             self.content = self
                 .content
                 .spliced(self.caret..self.caret, &composition.text, &marks);
             self.caret += composition.text.len();
             self.anchor = self.caret;
+            self.record(before);
+        } else if let Some(before) = before {
+            // A cancelled composition may have deleted a selection.
+            self.record(before);
         }
     }
 

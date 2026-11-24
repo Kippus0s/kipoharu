@@ -6,7 +6,9 @@ export const shortcuts = {
   undo: 'mod+z',
   redo: 'mod+shift+z',
   selectAll: 'mod+a',
-  /** Of the area the marquee and the lasso marked. */
+  /** Duplicate selected text or translation blocks. */
+  duplicate: 'mod+e',
+  /** Deselect selected layers and any marquee or lasso area. */
   deselect: 'mod+d',
   /** Fit on Screen. */
   fit: 'mod+0',

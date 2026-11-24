@@ -80,9 +80,18 @@ impl Typing {
                     Keyed::Taken(copied)
                 }
                 "v" => Keyed::Taken(vec![Effect::Paste]),
-                // Undo and redo inside a session aren't kept; the history's
-                // would change the text under it.
-                "z" | "y" => taken,
+                "z" if shift => {
+                    self.redo()?;
+                    taken
+                }
+                "z" => {
+                    self.undo()?;
+                    taken
+                }
+                "y" => {
+                    self.redo()?;
+                    taken
+                },
                 _ => Keyed::Pass,
             },
             // Alt alone opens a menu by its letter.

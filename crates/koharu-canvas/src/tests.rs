@@ -1560,6 +1560,22 @@ fn press_key(
     effects
 }
 
+/// Sends a Ctrl/Shift character shortcut while keeping canvas typing active.
+fn type_chord(canvas: &mut Canvas, letter: &str, code: Code, modifiers: Modifiers) {
+    let pressed = key_down(Key::Character(letter.to_owned()), code, modifiers);
+    let effects = canvas
+        .key(&pressed)
+        .expect("a shortcut")
+        .expect("typing takes the shortcut");
+    assert!(effects.is_empty(), "the shortcut edits only the typing session");
+    canvas
+        .key(&KeyboardEvent {
+            state: KeyState::Up,
+            ..pressed
+        })
+        .expect("a shortcut release");
+}
+
 /// Types `text` a character at a time, as key presses do.
 fn type_text(canvas: &mut Canvas, text: &str) {
     for character in text.chars() {
@@ -1667,6 +1683,93 @@ fn typing_into_a_text_edits_it_at_the_click_in_one_step() {
             .typing()
             .is_some_and(|typing| typing.layer.is_none())
     );
+}
+
+#[test]
+fn canvas_typing_undo_redo_each_edit_and_drop_redo_after_new_typing() {
+    let Some(mut fixture) = unscaled(Vec::new()) else {
+        return;
+    };
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (30.0, 40.0), (30.0, 40.0));
+    type_text(&mut fixture.canvas, "Hello");
+
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    type_chord(&mut fixture.canvas, "y", Code::KeyY, CONTROL);
+    type_text(&mut fixture.canvas, "!");
+    // Editing after Undo drops the old redo branch.
+    type_chord(&mut fixture.canvas, "y", Code::KeyY, CONTROL);
+    assert!(fixture.canvas.typing().is_some());
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["add_text"]);
+    let text = layers(&fixture)[0];
+    assert_eq!(layer(&fixture, text)["content"], json!([{"insert": "Hell!"}]));
+}
+
+#[test]
+fn canvas_typing_undo_restores_select_all_delete_and_rich_text() {
+    let rich = json!([
+        {"insert": "Hello", "attributes": {"weight": 700}},
+        {"insert": " world"}
+    ]);
+    let Some(mut fixture) = unscaled(typed_text(rich.clone())) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    type_chord(&mut fixture.canvas, "a", Code::KeyA, CONTROL);
+    press_key(&mut fixture.canvas, NamedKey::Delete, Code::Delete, Modifiers::default());
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    // Ctrl+Shift+Z is redo too, and leaves the text box in edit mode.
+    type_chord(&mut fixture.canvas, "Z", Code::KeyZ, CONTROL | SHIFT);
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    assert!(fixture.canvas.typing().is_some());
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert!(apply(&mut fixture, effects).is_empty());
+    assert_eq!(layer(&fixture, text)["content"], rich);
+}
+
+#[test]
+fn canvas_typing_undo_redo_restores_selected_formatting() {
+    let Some(mut fixture) = unscaled(typed_text(json!("Hello"))) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    type_chord(&mut fixture.canvas, "a", Code::KeyA, CONTROL);
+    fixture.canvas.style_typing(&koharu_scene::CharStyle {
+        weight: Some(700),
+        ..Default::default()
+    }).expect("a style");
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    type_chord(&mut fixture.canvas, "y", Code::KeyY, CONTROL);
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["set_text"]);
+    assert_eq!(layer(&fixture, text)["content"], json!([
+        {"insert": "Hello", "attributes": {"weight": 700}}
+    ]));
+}
+
+#[test]
+fn canvas_typing_ime_replaces_selection_as_one_undo_step() {
+    let Some(mut fixture) = unscaled(Vec::new()) else {
+        return;
+    };
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (30.0, 40.0), (30.0, 40.0));
+    type_text(&mut fixture.canvas, "A");
+    type_chord(&mut fixture.canvas, "a", Code::KeyA, CONTROL);
+    fixture.canvas.compose("ni", Some((2, 2))).expect("compose");
+    fixture.canvas.compose("", None).expect("compose done");
+    fixture.canvas.insert("你").expect("commit IME");
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["add_text"]);
+    let text = layers(&fixture)[0];
+    assert_eq!(layer(&fixture, text)["content"], json!([{"insert": "A"}]));
 }
 
 #[test]

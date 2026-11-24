@@ -133,14 +133,11 @@ export function CanvasWorkspace() {
       )
     },
   })
-  // Ctrl+D duplicates selected text; otherwise it keeps the original Deselect action.
+  // Duplicate selected text or translation blocks, independently of Deselect (Ctrl+D).
   useHotkeys(
-    shortcuts.deselect,
+    shortcuts.duplicate,
     () => {
-      if (typing !== null || !page) {
-        send(commands.deselect)
-        return
-      }
+      if (typing !== null || !page) return
       const targets = walkLayers(page.layers)
         .map(({ layer }) => layer)
         .filter(
@@ -148,11 +145,7 @@ export function CanvasWorkspace() {
             selectedLayers.includes(layer.id) && (isTextLayer(layer) || isBlockLayer(layer)),
         )
         .map((layer) => layer.id)
-      if (targets.length) {
-        if (!duplication.isPending) duplication.mutate(targets)
-      } else {
-        send(commands.deselect)
-      }
+      if (targets.length && !duplication.isPending) duplication.mutate(targets)
     },
     command,
   )
@@ -162,6 +155,14 @@ export function CanvasWorkspace() {
   useHotkeys(
     shortcuts.selectAll,
     () => page && selectLayers(page.layers.map((layer) => layer.id)),
+    command,
+  )
+  useHotkeys(
+    shortcuts.deselect,
+    () => {
+      selectLayers([])
+      send(commands.deselect)
+    },
     command,
   )
   useHotkeys(shortcuts.fit, () => send(commands.fit), command)
