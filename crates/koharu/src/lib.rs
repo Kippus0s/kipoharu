@@ -1,4 +1,3 @@
-//! Koharu's process entrypoint and diagnostics.
+//! Kipoharu's process entrypoint and local error handling.
 
 pub mod panic;
-pub mod sentry;

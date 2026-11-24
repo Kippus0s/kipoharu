@@ -33,14 +33,12 @@ koharu-psd = { workspace = true }
 koharu-renderer = { workspace = true }
 koharu-runtime = { workspace = true }
 koharu-scene = { workspace = true }
-koharu-sentry = { workspace = true }
 kurbo = { workspace = true }
 parking_lot = { workspace = true }
 rars = { workspace = true }
 rayon = { workspace = true }
 rfd = { workspace = true }
 sanitize-filename = { workspace = true }
-sentry = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 specta = { workspace = true }

@@ -116,7 +116,6 @@ impl Events {
                 Event::Queued { run, steps } => {
                     record.span = Some(info_span!(
                         "pipeline run",
-                        sentry.op = "pipeline.run",
                         run = run.0,
                         steps,
                         outcome = tracing::field::Empty,
@@ -127,7 +126,6 @@ impl Events {
                         let stage_span = info_span!(
                             parent: span,
                             "pipeline stage",
-                            sentry.op = "pipeline.stage",
                             %stage,
                             %page,
                         );

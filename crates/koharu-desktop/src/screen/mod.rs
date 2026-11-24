@@ -19,14 +19,13 @@ mod shared;
 
 use std::{
     cell::RefCell,
-    io::Cursor,
     sync::{Arc, OnceLock},
     thread,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context as _, Result};
-use image::{DynamicImage, RgbaImage, codecs::jpeg::JpegEncoder, imageops::FilterType};
+use image::RgbaImage;
 use koharu_canvas::{
     Brush, Camera, Canvas, Colors, Effect, Rect, Snapshot, Story, Tool, Typed, Vec2,
 };
@@ -43,7 +42,7 @@ use tauri_runtime_cef::{
         ImplBrowserHost as _, ImplFrame as _, PaintElementType, sys::cef_cursor_type_t,
     },
 };
-use tokio::sync::oneshot::{self, error::TryRecvError};
+use tokio::sync::oneshot;
 use winit::{
     cursor::CursorIcon,
     dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
@@ -287,37 +286,6 @@ impl Screen {
         let (sender, receiver) = oneshot::channel();
         self.change(move |main| main.captures.push(sender));
         receiver
-    }
-
-    /// The window as its next frame shows it, its longer side at most 1600
-    /// pixels and as JPEG at quality 80, for an error event. The main
-    /// thread draws that frame, so there it's `None`, as when no frame
-    /// comes within a second.
-    pub fn screenshot(&self) -> Option<Vec<u8>> {
-        if thread::current().name() == Some("main") {
-            return None;
-        }
-        let mut receiver = self.capture();
-        let deadline = Instant::now() + Duration::from_secs(1);
-        let image = loop {
-            match receiver.try_recv() {
-                Ok(image) => break DynamicImage::ImageRgba8(image),
-                Err(TryRecvError::Empty) if Instant::now() < deadline => {
-                    thread::sleep(Duration::from_millis(10));
-                }
-                Err(_) => return None,
-            }
-        };
-        let image = if image.width().max(image.height()) > 1600 {
-            image.resize(1600, 1600, FilterType::Triangle)
-        } else {
-            image
-        };
-        let mut jpeg = Cursor::new(Vec::new());
-        JpegEncoder::new_with_quality(&mut jpeg, 80)
-            .encode_image(&image.to_rgb8())
-            .ok()?;
-        Some(jpeg.into_inner())
     }
 }
 

@@ -12,7 +12,6 @@ use std::sync::Arc;
 use anyhow::{Context as _, Result};
 use koharu_pipeline::{Pipeline, PipelineConfig};
 use koharu_renderer::{Gpu, Renderer, RendererConfig};
-use sentry::protocol::GpuContext;
 use tauri::Manager as _;
 use tauri_plugin_log::{Target, TargetKind, log::LevelFilter};
 use tauri_plugin_window_state::StateFlags;
@@ -54,24 +53,8 @@ pub fn run(context: tauri::Context<CefRuntime>) -> Result<()> {
         adapter.name,
         adapter.backend
     );
-    koharu_sentry::set_context(
-        "gpu",
-        GpuContext {
-            name: adapter.name,
-            id: Some(format!("{:#06x}", adapter.device)),
-            vendor_id: Some(format!("{:#06x}", adapter.vendor)),
-            api_type: Some(adapter.backend.to_string()),
-            driver_version: Some(adapter.driver_info).filter(|version| !version.is_empty()),
-            ..Default::default()
-        },
-    );
-
     let pipeline = Pipeline::new(koharu_config::get::<PipelineConfig>()?);
     let app = Arc::new(App::new(library, renderer, pipeline));
-    koharu_sentry::set_screenshot({
-        let screen = app.screen.clone();
-        move || screen.screenshot()
-    });
 
     let cef = Cef::default()
         // Lets the main webview render off-screen; a process-wide setting.
@@ -131,8 +114,6 @@ pub fn run(context: tauri::Context<CefRuntime>) -> Result<()> {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(koharu_sentry::plugin())
-        .on_web_content_process_terminate(koharu_sentry::web_content_process_terminated)
         .manage(app)
         .invoke_handler(commands::handler())
         .setup(move |tauri| {

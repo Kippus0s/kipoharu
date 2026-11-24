@@ -1,19 +1,19 @@
 ---
 title: '隐私'
-description: '诊断信息的用途，以及如何提出隐私问题。'
+description: 'Kipoharu 的本地诊断信息和网络连接。'
 icon: 'shield-halved'
 ---
 
-我们使用 [Sentry](https://sentry.io/) 排查错误和崩溃，提升软件的可靠性。本说明涵盖这类诊断报告。
+Kipoharu 不包含 Sentry、会话回放、自动诊断上传、设备跟踪标识符或远程性能遥测。
 
-## 诊断信息
+## 本地诊断信息
 
-报告可能包含错误消息、堆栈跟踪、相关日志、软件版本、设备与操作系统信息、时间戳，以及问题发生前后的上下文，也可能包含 IP 地址、URL、文件路径和诊断标识符。
+错误信息和日志可能保存在你的设备上，但不会自动发送给上游 Koharu 开发者或 Kipoharu 维护者。应用也不会为诊断目的上传截图。
 
-这些信息可能包含个人数据，例如文件路径中的用户名或错误消息中的内容。过滤可以减少敏感信息，但不能假定报告是匿名的。
+## 网络功能
 
-Sentry 由 Functional Software, Inc. 提供，代表我们处理报告。有关数据处理安排，请参阅 Sentry 的[数据处理条款](https://sentry.io/legal/dpa/)和[分包处理商列表](https://sentry.io/legal/subprocessors/)。
+模型下载、在线字体、翻译服务等由用户选择使用的功能仍可能连接各自的服务。这些连接不属于诊断遥测。
 
-## 问题与反馈
+## 问题
 
-如果你对隐私有疑问或顾虑，请[创建 GitHub issue](https://github.com/koharu-rs/koharu/issues/new/choose)。issue 是公开的，请勿包含个人信息、凭据或私密文件。如果需要提供敏感细节，请先询问如何私下分享。
+如有疑问，请使用 Kipoharu 仓库的 Issue。请勿在公开 Issue 中发布密码、未公开页面、凭据或其他私人文件。

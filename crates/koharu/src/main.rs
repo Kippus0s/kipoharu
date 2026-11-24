@@ -5,11 +5,9 @@ mod mallinfo;
 
 use std::io::IsTerminal as _;
 
-use ::sentry::integrations::tracing::{BreadcrumbLayer, ErrorLayer, LogLayer, SpanLayer};
 use clap::Parser as _;
 use koharu::panic;
-use koharu::sentry;
-use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
+use tracing_subscriber::layer::SubscriberExt as _;
 
 #[derive(clap::Parser)]
 #[command(version, about)]
@@ -27,8 +25,6 @@ fn main() {
         };
     }
 
-    // First, before the runtime and the arguments: see `sentry::initialize`.
-    let _guard = sentry::initialize();
     let _cli = Cli::parse();
     panic::install();
     tracing::subscriber::set_global_default(
@@ -49,12 +45,6 @@ fn main() {
                     // The `cef` crate's texture importer logs every frame.
                     .add_directive("cef=warn".parse().expect("the directive parses")),
             )
-            // INFO and up as spans, logs, and breadcrumbs, since a crash report
-            // carries breadcrumbs and not logs; errors as issues.
-            .with(SpanLayer::new().with_filter(LevelFilter::INFO))
-            .with(LogLayer::new().with_filter(LevelFilter::INFO))
-            .with(BreadcrumbLayer::new().with_filter(LevelFilter::INFO))
-            .with(ErrorLayer::new().with_filter(LevelFilter::ERROR))
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(std::io::stderr)

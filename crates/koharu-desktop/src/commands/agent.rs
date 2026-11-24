@@ -48,7 +48,7 @@ pub async fn run_agent(
         .model
         .clone()
         .context("no agent model is set in the preferences")?;
-    let span = tracing::info_span!("agent run", sentry.op = "agent.run", model,);
+    let span = tracing::info_span!("agent run", model);
     let id = RUNS.fetch_add(1, Ordering::Relaxed) + 1;
     let mut project = app.project.lock();
     let project = project.as_mut().context("no project is open")?;

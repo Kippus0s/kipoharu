@@ -1,8 +1,7 @@
 use indoc::formatdoc;
 
-/// Chains after Sentry's hook, which reports and sends the panic, then tells
-/// the user and closes the app, so a panic on any thread doesn't leave it
-/// running.
+/// Chains after Rust's default panic hook, which writes the panic locally,
+/// then tells the user and closes the app.
 pub fn install() {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {

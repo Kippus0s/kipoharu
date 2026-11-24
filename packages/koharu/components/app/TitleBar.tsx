@@ -1,6 +1,5 @@
 'use client'
 
-import * as Sentry from '@sentry/nextjs'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { FilePlus2, FolderOpen, LoaderCircle } from 'lucide-react'
 import Image from 'next/image'
@@ -55,39 +54,6 @@ export function TitleBar() {
     background: t('psd.background'),
     cleanup: t('psd.cleanup'),
     outline: t('psd.outline'),
-  }
-
-  /** Sentry's feedback form, in the interface's language; it leaves the page when it closes. */
-  const sendFeedback = async () => {
-    const feedback = Sentry.getFeedback()
-    if (!feedback) return
-    const form = await feedback.createForm({
-      formTitle: t('feedback.title'),
-      nameLabel: t('feedback.name'),
-      namePlaceholder: t('feedback.namePlaceholder'),
-      emailLabel: t('feedback.email'),
-      emailPlaceholder: t('feedback.emailPlaceholder'),
-      messageLabel: t('feedback.message'),
-      messagePlaceholder: t('feedback.messagePlaceholder'),
-      isRequiredLabel: t('feedback.required'),
-      submitButtonLabel: t('feedback.submit'),
-      cancelButtonLabel: t('feedback.cancel'),
-      confirmButtonLabel: t('feedback.confirm'),
-      addScreenshotButtonLabel: t('feedback.addScreenshot'),
-      removeScreenshotButtonLabel: t('feedback.removeScreenshot'),
-      highlightToolText: t('feedback.highlight'),
-      hideToolText: t('feedback.hide'),
-      removeHighlightText: t('feedback.removeHighlight'),
-      successMessageText: t('feedback.sent'),
-      errorEmptyMessageText: t('feedback.emptyMessage'),
-      errorNoClientText: t('feedback.noClient'),
-      errorTimeoutText: t('feedback.timeout'),
-      errorForbiddenText: t('feedback.forbidden'),
-      errorGenericText: t('feedback.failed'),
-      onFormClose: () => form.removeFromDom(),
-    })
-    form.appendToDom()
-    form.open()
   }
 
   return (
@@ -243,9 +209,6 @@ export function TitleBar() {
                 }
               >
                 {t('menu.donate')}
-              </MenubarItem>
-              <MenubarItem onClick={() => void sendFeedback().catch(() => undefined)}>
-                {t('menu.feedback')}
               </MenubarItem>
               <MenubarSeparator />
               <MenubarItem onClick={() => setAboutOpen(true)}>{t('menu.about')}</MenubarItem>

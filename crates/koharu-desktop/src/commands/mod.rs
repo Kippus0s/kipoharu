@@ -49,10 +49,8 @@ impl IpcResponse for Bytes {
     }
 }
 
-/// Every command, each run inside a span continuing the trace its
-/// `sentry-trace` header carries: the interface's span of that call. Tauri
-/// runs an async command's future inside a span of its own, made under
-/// this one.
+/// Run each command inside a local tracing span so errors and log messages
+/// identify the command that produced them.
 pub fn handler() -> impl Fn(Invoke<CefRuntime>) -> bool + Send + Sync + 'static {
     let commands: fn(Invoke<CefRuntime>) -> bool = tauri::generate_handler![
         project::list_projects,
@@ -108,19 +106,7 @@ pub fn handler() -> impl Fn(Invoke<CefRuntime>) -> bool + Send + Sync + 'static 
         debug::debug_pointer,
     ];
     move |invoke: Invoke<CefRuntime>| {
-        let message = &invoke.message;
-        let trace = message
-            .headers()
-            .get("sentry-trace")
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let _span = tracing::info_span!(
-            "command",
-            sentry.name = message.command(),
-            sentry.op = "command",
-            sentry.trace = trace,
-        )
-        .entered();
+        let _span = tracing::info_span!("command", name = invoke.message.command()).entered();
         commands(invoke)
     }
 }
