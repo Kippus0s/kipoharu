@@ -47,6 +47,13 @@ No more scrolling through almost 1,000 online fonts and waiting for previews to 
 
 The first two changes mean you can finish editing a text box and then close the text canvas by pressing Escape or clicking away, without losing changes, and then be free to use hotkeys to switch to a different tool.
 
+### Story Editor
+
+-Hidden text layers remain visible and editable within the Story tab, with a crossed-out eye icon indicating their hidden status.
+-Visible text retains its original reading order and canvas numbering.
+
+This allows OCR errors to be corrected by hiding the translated text and referring directly to the original Japanese on the canvas, without losing access to the source and translation fields in Story. Previously, hiding a text layer would also remove its entry from Story, making OCR correction and proofreading unnecessarily awkward.
+
 ### Text Fitting Modes
 
 The contextual text bar now includes a drop-down for selecting how text fits within its designated area:
