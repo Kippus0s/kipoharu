@@ -3,11 +3,12 @@
 import { useMutation } from '@tanstack/react-query'
 import { AlignCenter, AlignLeft, AlignRight, ChevronDown, Italic } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
 
 import { Choice } from '@/components/controls/Choice'
 import { ColorWell } from '@/components/controls/ColorWell'
-import { FontPicker } from '@/components/controls/FontPicker'
+import { FontPicker, useFavoriteFonts } from '@/components/controls/FontPicker'
 import { ContextBar } from '@/components/editor/ContextBar'
 import { toHex, toRgba } from '@/lib/color'
 import {
@@ -19,6 +20,7 @@ import {
 } from '@/lib/document'
 import { readPage, send, useFonts, useOnlineFonts, usePage, usePreferences } from '@/lib/queries'
 import { setStyle, updateLayer } from '@/lib/scene'
+import { shortcuts } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
 import {
   commands,
@@ -80,6 +82,7 @@ export function TypeBar() {
   const current = targets[0]
   const lettering: Text | null = current ? letteringOf(current) : null
   const typing = useKoharuStore((state) => state.typing)
+  const favorites = useFavoriteFonts((state) => state.favorites)
   // The newest style asked for shows on the first target until the page is read with it.
   const restyle = useMutation({
     mutationFn: (edit: { layer: LayerId; style: TextStyle; targets: Layer[]; patch: TextStyle }) =>
@@ -184,6 +187,39 @@ export function TypeBar() {
   const direction: Direction = lettering?.direction ?? 'horizontal'
   const align: Align = style.align ?? (direction === 'vertical' ? 'start' : 'center')
 
+  // Cycle starred families in the same alphabetical order as the picker, including online fonts.
+  // The renderer downloads an online font on first use, so the catalog needn't be opened.
+  const selectionKey = `${page?.id ?? ''}:${selectedIds.join(',')}`
+  const lastFavorite = useRef<{ selection: string; name: string } | null>(null)
+  useEffect(() => {
+    lastFavorite.current = null
+  }, [selectionKey])
+  useHotkeys(
+    [shortcuts.nextFavoriteFont, shortcuts.previousFavoriteFont],
+    (_, { shift }) => {
+      if (!favorites.length || !targets.length || typing !== null) return
+      const ordered = [...favorites].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+      )
+      const previous = lastFavorite.current?.selection === selectionKey
+        ? lastFavorite.current.name
+        : family
+      const index = ordered.findIndex((name) => sameFont(name, previous))
+      const nextIndex = index < 0
+        ? (shift ? ordered.length - 1 : 0)
+        : (index + (shift ? -1 : 1) + ordered.length) % ordered.length
+      const next = ordered[nextIndex]
+      if (!next) return
+      lastFavorite.current = { selection: selectionKey, name: next }
+      applyChars({ family: families.find((font) => sameFont(font.name, next))?.name ?? next })
+    },
+    {
+      enabled: targets.length > 0 && typing === null && TOOLS.includes(tool),
+      preventDefault: true,
+      useKey: true,
+    },
+  )
+
   // The bar sits by the selection as the canvas lays it out, a point text's lines and the text
   // being typed included.
   const selectionBounds = useKoharuStore((state) => state.selectionBounds)
@@ -209,6 +245,7 @@ export function TypeBar() {
           families={installedFonts ?? []}
           size='sm'
           onChange={(next) => {
+            lastFavorite.current = null
             const nextFamily = families.find((candidate) => sameFont(candidate.name, next))
             const nextItalic = italic && hasItalic(nextFamily)
             applyChars({

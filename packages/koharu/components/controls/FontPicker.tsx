@@ -33,7 +33,7 @@ const noExcludedNames: string[] = []
 /** The families starred as favorites, by normalized name, and whether the picker lists only them,
  * as Photoshop's font menu keeps favorites and its Show Favorite Fonts filter. Every picker shares
  * them, and the interface keeps them in its browser profile, as it does the editor's panel widths. */
-const useFavoriteFonts = create<{
+export const useFavoriteFonts = create<{
   favorites: string[]
   only: boolean
   toggle: (family: string) => void

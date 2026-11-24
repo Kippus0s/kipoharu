@@ -8,6 +8,9 @@ export const shortcuts = {
   selectAll: 'mod+a',
   /** Duplicate selected text or translation blocks. */
   duplicate: 'mod+e',
+  /** Cycle the starred typefaces of selected text boxes. */
+  nextFavoriteFont: 'mod+f',
+  previousFavoriteFont: 'mod+shift+f',
   /** Deselect selected layers and any marquee or lasso area. */
   deselect: 'mod+d',
   /** Fit on Screen. */
