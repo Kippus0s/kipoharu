@@ -19,7 +19,7 @@ import {
   walkLayers,
 } from '@/lib/document'
 import { readPage, send, useFonts, useOnlineFonts, usePage, usePreferences } from '@/lib/queries'
-import { setStyle, updateLayer } from '@/lib/scene'
+import { setFit as setFrameFit, setStyle, updateLayer } from '@/lib/scene'
 import { shortcuts } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
 import {
@@ -107,11 +107,6 @@ export function TypeBar() {
   }
   const chars = style.chars ?? {}
   const mixed = new Set(shared.mixed.filter((key) => drafted?.chars?.[key] === undefined))
-  const frame = lettering?.frame ?? 'point'
-  // A box and a path fit their text alike, a balloon's translation in a path; point text has no fit.
-  const fitted = typeof frame !== 'object' ? null : frame.box ? 'box' : 'path'
-  const fit = typeof frame === 'object' ? (frame.box ?? frame.path)?.fit : undefined
-  const autoFit = fit === 'best'
   // A multi-selection may mix rectangular boxes and balloon-shaped paths. Never apply a box
   // frame patch to a path, or offer Grow when any selected text is fitted to a path.
   const frames = targets.map((layer) => {
@@ -123,6 +118,10 @@ export function TypeBar() {
       fit: (frame.box ?? frame.path)?.fit,
     }
   })
+  const fits = frames.flatMap((entry) => (entry ? [entry.fit] : []))
+  const fitted = fits.length > 0
+  const autoFit = fitted && fits.every((fit) => fit === 'best')
+  const mixedFit = !autoFit && fits.includes('best')
   const canFit = frames.length > 0 && frames.every((entry) => entry !== null)
   const canGrow = canFit && frames.every((entry) => entry?.kind === 'box')
   const sharedFit =
@@ -180,7 +179,7 @@ export function TypeBar() {
   const italic = Boolean(chars.italic) && italics
   const weight = chars.weight ?? 400
   const weights = usableFontWeights(selectedFamily, italic)
-  const size = mixed.has('size') ? null : Math.round((chars.size ?? 24) * 100) / 100
+  const size = mixed.has('size') || mixedFit ? null : Math.round((chars.size ?? 24) * 100) / 100
   const strokeWidth = chars.stroke_width ?? 0
   const stroke = chars.stroke ?? null
   const strokeEnabled = stroke !== null && stroke[3] > 0 && strokeWidth > 0
@@ -301,16 +300,14 @@ export function TypeBar() {
           auto={{
             label: t('inspector.auto'),
             active: autoFit,
-            available: fitted !== null,
-            onPick: () => setFit('best'),
+            available: fitted,
+            onPick: () => send(setFrameFit, targets, 'best'),
           }}
           onChange={(next) => {
             applyChars({ size: next })
             // A typed size is the size the text draws at, as in Photoshop and Clip Studio Paint, so
             // a frame that shrinks or grows its text stops fitting it; a growing box keeps the size.
-            if (fitted && fit !== 'none' && fit !== 'grow') {
-              update({ frame: { [fitted]: { fit: 'none' } } })
-            }
+            if (fitted) send(setFrameFit, targets, 'none')
           }}
         />
       </div>
