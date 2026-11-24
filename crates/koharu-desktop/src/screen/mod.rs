@@ -279,14 +279,6 @@ impl Screen {
             }
         });
     }
-
-    /// The window as its next composited frame shows it: the canvas and
-    /// CEF's paint together.
-    pub fn capture(&self) -> oneshot::Receiver<RgbaImage> {
-        let (sender, receiver) = oneshot::channel();
-        self.change(move |main| main.captures.push(sender));
-        receiver
-    }
 }
 
 /// The main window as the main thread holds it.
