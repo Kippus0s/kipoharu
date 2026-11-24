@@ -252,6 +252,20 @@ impl Screen {
         });
     }
 
+    /// A selection made by the app itself (e.g. a completed Remove stroke).
+    /// Publish it just like a selection made by a canvas gesture, so the
+    /// interface and canvas agree before the next stroke or deselection.
+    pub fn select_and_notify(&self, app: Arc<App>, layers: Vec<LayerId>) {
+        self.answer(app, move |main| {
+            let Some(canvas) = &mut main.canvas else {
+                return Vec::new();
+            };
+            let mut effects = canvas.select(layers);
+            effects.push(Effect::Selection(canvas.selection().to_vec()));
+            effects
+        });
+    }
+
     /// An arrow key's move of the selection.
     pub fn nudge(&self, app: Arc<App>, by: Vec2) {
         self.answer(app, move |main| {

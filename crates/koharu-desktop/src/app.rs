@@ -272,7 +272,7 @@ impl App {
                             })
                         });
                         if on_page {
-                            showing.screen.select(Arc::clone(&showing), vec![layer]);
+                            showing.screen.select_and_notify(Arc::clone(&showing), vec![layer]);
                         }
                     }
                     result
