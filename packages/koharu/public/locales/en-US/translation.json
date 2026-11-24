@@ -185,6 +185,12 @@
     "borderWidth": "Border width",
     "chooseBorderWidth": "Choose border width",
     "chooseFontSize": "Choose font size",
+    "fitModes": {
+      "best": "Best Fit",
+      "grow": "Grow",
+      "none": "Fixed",
+      "shrink": "Shrink"
+    },
     "font": "Font",
     "fontSize": "Font size",
     "fontStyles": {
@@ -199,6 +205,7 @@
     "text": "Text",
     "textColor": "Text color",
     "textDirection": "Text direction",
+    "textFit": "Text fit",
     "translation": "Translation",
     "type": "Type",
     "vertical": "Vertical"

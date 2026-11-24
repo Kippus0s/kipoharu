@@ -52,6 +52,7 @@ const WHITE = '#FFFFFF'
 
 /** The tools whose selection the bar follows; a brush's settings are on the tool rail. */
 const TOOLS: CanvasTool[] = ['select', 'direct_select', 'text']
+const FIT_MODES = ['none', 'shrink', 'grow', 'best'] as const
 
 /** The selected texts' type settings in a bar beside them on the canvas, as Photoshop's Contextual
  * Task Bar shows a selection's type settings on the canvas: centred below the texts, or above when
@@ -108,6 +109,23 @@ export function TypeBar() {
   const fitted = typeof frame !== 'object' ? null : frame.box ? 'box' : 'path'
   const fit = typeof frame === 'object' ? (frame.box ?? frame.path)?.fit : undefined
   const autoFit = fit === 'best'
+  // A multi-selection may mix rectangular boxes and balloon-shaped paths. Never apply a box
+  // frame patch to a path, or offer Grow when any selected text is fitted to a path.
+  const frames = targets.map((layer) => {
+    const frame = letteringOf(layer)?.frame
+    if (!frame || typeof frame !== 'object') return null
+    return {
+      layer,
+      kind: frame.box ? ('box' as const) : ('path' as const),
+      fit: (frame.box ?? frame.path)?.fit,
+    }
+  })
+  const canFit = frames.length > 0 && frames.every((entry) => entry !== null)
+  const canGrow = canFit && frames.every((entry) => entry?.kind === 'box')
+  const sharedFit =
+    canFit && frames.every((entry) => entry?.fit === frames[0]?.fit)
+      ? (frames[0]?.fit ?? '')
+      : ''
 
   /** Merges `patch` into each target's style, shown at once on the first. */
   const apply = (patch: TextStyle) => {
@@ -133,6 +151,17 @@ export function TypeBar() {
   const update = (patch: { [key in string]: Value }) => {
     for (const layer of targets) {
       send(updateLayer, layer.id, isBlockLayer(layer) ? { translation: patch } : patch)
+    }
+  }
+
+  /** Update each selected frame in its own shape; path-shaped balloon text cannot grow. */
+  const setFit = (next: string) => {
+    if (!canFit || !FIT_MODES.includes(next as (typeof FIT_MODES)[number])) return
+    if (next === 'grow' && !canGrow) return
+    for (const entry of frames) {
+      if (!entry) continue
+      const patch = { frame: { [entry.kind]: { fit: next } } }
+      send(updateLayer, entry.layer.id, isBlockLayer(entry.layer) ? { translation: patch } : patch)
     }
   }
 
@@ -236,7 +265,7 @@ export function TypeBar() {
             label: t('inspector.auto'),
             active: autoFit,
             available: fitted !== null,
-            onPick: () => fitted && update({ frame: { [fitted]: { fit: 'best' } } }),
+            onPick: () => setFit('best'),
           }}
           onChange={(next) => {
             applyChars({ size: next })
@@ -248,6 +277,32 @@ export function TypeBar() {
           }}
         />
       </div>
+      {canFit && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={t('inspector.textFit')}
+            className='flex h-6 max-w-24 items-center gap-1 rounded-md border border-input bg-background px-2 text-xs hover:bg-muted'
+          >
+            <span className='truncate'>
+              {sharedFit ? t(`inspector.fitModes.${sharedFit}`) : t('inspector.textFit')}
+            </span>
+            <ChevronDown className='size-3 shrink-0' />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='start'>
+            <DropdownMenuRadioGroup value={sharedFit} onValueChange={setFit}>
+              {FIT_MODES.map((mode) => (
+                <DropdownMenuRadioItem
+                  key={mode}
+                  value={mode}
+                  disabled={mode === 'grow' && !canGrow}
+                >
+                  {t(`inspector.fitModes.${mode}`)}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       <ColorWell
         label={t('inspector.textColor')}
         size='sm'
