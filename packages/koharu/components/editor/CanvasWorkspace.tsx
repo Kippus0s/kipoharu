@@ -154,7 +154,14 @@ export function CanvasWorkspace() {
   useHotkeys(shortcuts.redo, () => send(commands.redo), command)
   useHotkeys(
     shortcuts.selectAll,
-    () => page && selectLayers(page.layers.map((layer) => layer.id)),
+    () =>
+      page &&
+      selectLayers(
+        walkLayers(page.layers)
+          .map(({ layer }) => layer)
+          .filter((layer) => isTextLayer(layer) || isBlockLayer(layer))
+          .map((layer) => layer.id),
+      ),
     command,
   )
   useHotkeys(
