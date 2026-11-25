@@ -1,6 +1,5 @@
 //! The commands the React interface calls.
 
-mod agent;
 mod canvas;
 #[cfg(debug_assertions)]
 mod debug;
@@ -71,9 +70,6 @@ pub fn handler() -> impl Fn(Invoke<CefRuntime>) -> bool + Send + Sync + 'static 
         processing::stop_pipeline,
         processing::unload,
         processing::get_pipeline_events,
-        agent::run_agent,
-        agent::stop_agent,
-        agent::reset_agent,
         preferences::get_preferences,
         preferences::save_preferences,
         preferences::list_models,
@@ -100,8 +96,6 @@ pub fn handler() -> impl Fn(Invoke<CefRuntime>) -> bool + Send + Sync + 'static 
         canvas::nudge,
         processing::fill,
         canvas::deselect,
-        #[cfg(debug_assertions)]
-        debug::capture,
         #[cfg(debug_assertions)]
         debug::debug_pointer,
     ];
@@ -133,9 +127,6 @@ pub fn bindings(types: &mut Types) -> Vec<Function> {
         processing::stop_pipeline,
         processing::unload,
         processing::get_pipeline_events,
-        agent::run_agent,
-        agent::stop_agent,
-        agent::reset_agent,
         preferences::get_preferences,
         preferences::save_preferences,
         preferences::list_models,

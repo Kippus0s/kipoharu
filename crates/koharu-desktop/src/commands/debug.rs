@@ -1,31 +1,14 @@
 //! Commands for checking the app from outside, in debug builds only.
 
-use std::{io::Cursor, sync::Arc};
+use std::sync::Arc;
 
-use image::ImageFormat;
-use tauri::{AppHandle, Manager as _, State, ipc::Response};
+use tauri::{AppHandle, Manager as _, State};
 use tauri_runtime_cef::CefRuntime;
 
 use crate::{
     app::App,
     screen::{self, Pointer},
 };
-
-/// The window as it's composited, as PNG bytes: the canvas and CEF's paint
-/// together, which a CDP screenshot of the page alone can't show.
-#[tauri::command]
-pub async fn capture(app: State<'_, Arc<App>>) -> Result<Response, String> {
-    let image = app
-        .screen
-        .capture()
-        .await
-        .map_err(|_| "the window closed before it drew".to_owned())?;
-    let mut png = Cursor::new(Vec::new());
-    image
-        .write_to(&mut png, ImageFormat::Png)
-        .map_err(|error| error.to_string())?;
-    Ok(Response::new(png.into_inner()))
-}
 
 /// Routes `pointer` as the main window would have, on the main thread where
 /// its events arrive, so a check can click, drag, and zoom on the native
