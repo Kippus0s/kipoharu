@@ -32,22 +32,37 @@ fn marked(text: &RichText) -> Vec<(&str, Option<u16>)> {
 #[test]
 fn proportional_sizes_scale_each_frame_about_its_centre_in_one_edit() {
     let (_dir, mut session, page) = session();
-    let boxed = add(&mut session, page, None, json!({
-        "kind": "text", "content": "Hello", "style": {"chars": {"size": 20}},
-        "frame": {"box": {"bounds": {"x": 10, "y": 20, "width": 80, "height": 40},
-            "fit": "proportional", "anchor": "center"}}
-    }));
-    let balloon = add(&mut session, page, None, json!({
-        "kind": "block", "source": {"content": "original", "frame": {"box": {
-            "bounds": {"x": 10, "y": 20, "width": 80, "height": 40}}}},
-        "translation": {"content": "Hello", "style": {"chars": {"size": 40}},
-            "frame": {"path": {"path": "M10 40 Q50 0 90 40 Q50 80 10 40Z",
-                "fit": "proportional", "anchor": "center", "inset": 0.5}}}
-    }));
-    let fixed = add(&mut session, page, None, json!({
-        "kind": "text", "content": "Fixed", "style": {"chars": {"size": 20}},
-        "frame": {"box": {"bounds": {"x": 10, "y": 20, "width": 80, "height": 40}, "fit": "none"}}
-    }));
+    let boxed = add(
+        &mut session,
+        page,
+        None,
+        json!({
+            "kind": "text", "content": "Hello", "style": {"chars": {"size": 20}},
+            "frame": {"box": {"bounds": {"x": 10, "y": 20, "width": 80, "height": 40},
+                "fit": "proportional", "anchor": "center"}}
+        }),
+    );
+    let balloon = add(
+        &mut session,
+        page,
+        None,
+        json!({
+            "kind": "block", "source": {"content": "original", "frame": {"box": {
+                "bounds": {"x": 10, "y": 20, "width": 80, "height": 40}}}},
+            "translation": {"content": "Hello", "style": {"chars": {"size": 40}},
+                "frame": {"path": {"path": "M10 40 Q50 0 90 40 Q50 80 10 40Z",
+                    "fit": "proportional", "anchor": "center", "inset": 0.5}}}
+        }),
+    );
+    let fixed = add(
+        &mut session,
+        page,
+        None,
+        json!({
+            "kind": "text", "content": "Fixed", "style": {"chars": {"size": 20}},
+            "frame": {"box": {"bounds": {"x": 10, "y": 20, "width": 80, "height": 40}, "fit": "none"}}
+        }),
+    );
     let before = session.project();
     let original = common::layer(&session, balloon);
     let path_before = text(&session, balloon).bounds().expect("a path");
@@ -58,16 +73,34 @@ fn proportional_sizes_scale_each_frame_about_its_centre_in_one_edit() {
     ]).expect("size edit");
     let box_after = text(&session, boxed);
     assert_eq!(box_after.style.chars.size, Some(60.0));
-    assert_eq!(box_after.bounds(), Some(kurbo::Rect::new(-70.0, -20.0, 170.0, 100.0)));
-    assert!(matches!(box_after.frame, koharu_scene::Frame::Box { fit: koharu_scene::Fit::Proportional, .. }));
+    assert_eq!(
+        box_after.bounds(),
+        Some(kurbo::Rect::new(-70.0, -20.0, 170.0, 100.0))
+    );
+    assert!(matches!(
+        box_after.frame,
+        koharu_scene::Frame::Box {
+            fit: koharu_scene::Fit::Proportional,
+            ..
+        }
+    ));
     let path_after = text(&session, balloon);
     let bounds = path_after.bounds().expect("a path");
     assert_eq!(bounds.center(), path_before.center());
     assert_eq!(bounds.width(), path_before.width() * 1.5);
     assert_eq!(bounds.height(), path_before.height() * 1.5);
     assert_eq!(path_after.style.chars.size, Some(60.0));
-    assert!(matches!(path_after.frame, koharu_scene::Frame::Path { fit: koharu_scene::PathFit::Proportional, .. }));
-    assert_eq!(text(&session, fixed).bounds(), Some(kurbo::Rect::new(10.0, 20.0, 90.0, 60.0)));
+    assert!(matches!(
+        path_after.frame,
+        koharu_scene::Frame::Path {
+            fit: koharu_scene::PathFit::Proportional,
+            ..
+        }
+    ));
+    assert_eq!(
+        text(&session, fixed).bounds(),
+        Some(kurbo::Rect::new(10.0, 20.0, 90.0, 60.0))
+    );
     let changed = common::layer(&session, balloon);
     let (Content::Block(old), Content::Block(new)) = (&original.content, &changed.content) else {
         panic!("a block");
@@ -85,17 +118,36 @@ fn proportional_sizes_scale_each_frame_about_its_centre_in_one_edit() {
 #[test]
 fn proportional_respects_explicit_frame_edits_and_scales_down_from_default_size() {
     let (_dir, mut session, page) = session();
-    let boxed = add(&mut session, page, None, json!({
-        "kind": "text", "content": "Hello", "frame": {"box": {"bounds": {
-            "x": 0, "y": 0, "width": 80, "height": 40}, "fit": "proportional"}}
-    }));
-    apply(&mut session, vec![json!({"op": "update_layer", "layer": boxed,
-        "patch": {"style": {"chars": {"size": 12}}}})]).expect("half size");
-    assert_eq!(text(&session, boxed).bounds(), Some(kurbo::Rect::new(20.0, 10.0, 60.0, 30.0)));
-    apply(&mut session, vec![json!({"op": "update_layer", "layer": boxed,
+    let boxed = add(
+        &mut session,
+        page,
+        None,
+        json!({
+            "kind": "text", "content": "Hello", "frame": {"box": {"bounds": {
+                "x": 0, "y": 0, "width": 80, "height": 40}, "fit": "proportional"}}
+        }),
+    );
+    apply(
+        &mut session,
+        vec![json!({"op": "update_layer", "layer": boxed,
+        "patch": {"style": {"chars": {"size": 12}}}})],
+    )
+    .expect("half size");
+    assert_eq!(
+        text(&session, boxed).bounds(),
+        Some(kurbo::Rect::new(20.0, 10.0, 60.0, 30.0))
+    );
+    apply(
+        &mut session,
+        vec![json!({"op": "update_layer", "layer": boxed,
         "patch": {"style": {"chars": {"size": 24}}, "frame": {"box": {"bounds": {
-            "x": 0, "y": 0, "width": 100, "height": 60}}}}})]).expect("explicit resize");
-    assert_eq!(text(&session, boxed).bounds(), Some(kurbo::Rect::new(0.0, 0.0, 100.0, 60.0)));
+            "x": 0, "y": 0, "width": 100, "height": 60}}}}})],
+    )
+    .expect("explicit resize");
+    assert_eq!(
+        text(&session, boxed).bounds(),
+        Some(kurbo::Rect::new(0.0, 0.0, 100.0, 60.0))
+    );
 }
 
 #[test]

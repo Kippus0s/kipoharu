@@ -54,7 +54,10 @@ impl<'a> Turn<'a> {
         conversation: &mut Conversation,
         model: &DynModel<Completion>,
     ) -> Result<Option<Vec<String>>> {
-        conversation.context.fit(model).await?;
+        tokio::select! {
+            result = conversation.context.fit(model) => result?,
+            () = self.cancel.cancelled() => return Ok(None),
+        }
         let history: Vec<Message> = conversation
             .context
             .messages()

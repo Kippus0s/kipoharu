@@ -29,7 +29,9 @@ impl Renderer {
                     {
                         let target = match &current.content {
                             Content::Text(text) => Some((text.as_ref(), false)),
-                            Content::Block(block) => block.translation.as_ref().map(|text| (text, true)),
+                            Content::Block(block) => {
+                                block.translation.as_ref().map(|text| (text, true))
+                            }
                             _ => None,
                         };
                         if let Some((text, translation)) = target
@@ -42,14 +44,22 @@ impl Renderer {
                                 || text.style.chars.size.unwrap_or(24.0),
                                 |laid| laid.effective_size(text),
                             );
-                            ensure!(scale.is_finite() && scale > 0.0 && size.is_finite() && size > 0.0,
-                                "invalid rendered size for proportional text");
+                            ensure!(
+                                scale.is_finite() && scale > 0.0 && size.is_finite() && size > 0.0,
+                                "invalid rendered size for proportional text"
+                            );
                             let patch = base_patch(text, translation, size, scale);
-                            ops.push(Op::UpdateLayer { layer: layer.clone(), patch });
+                            ops.push(Op::UpdateLayer {
+                                layer: layer.clone(),
+                                patch,
+                            });
                             let mut spans = text.content.0.clone();
                             scale_marks(&mut spans, scale);
                             if spans != text.content.0 {
-                                ops.push(Op::SetRichText { layer: layer.clone(), spans });
+                                ops.push(Op::SetRichText {
+                                    layer: layer.clone(),
+                                    spans,
+                                });
                             }
                             normalized.insert(id, scale);
                         }
@@ -59,7 +69,9 @@ impl Renderer {
                     // The TypeBar/wheel clear explicit span sizes on a layer-wide
                     // size edit. Keep that behavior, but normalize any remaining
                     // stroke marks so the Best Fit scale is not lost.
-                    if let Some(scale) = layer.uuid().map(LayerId).and_then(|id| normalized.get(&id)) {
+                    if let Some(scale) =
+                        layer.uuid().map(LayerId).and_then(|id| normalized.get(&id))
+                    {
                         scale_marks(spans, *scale);
                     }
                 }
@@ -81,16 +93,25 @@ fn fit_patch(text: &Text) -> Value {
 }
 
 fn wrapped(patch: Value, translation: bool) -> Value {
-    if translation { json!({"translation": patch}) } else { patch }
+    if translation {
+        json!({"translation": patch})
+    } else {
+        patch
+    }
 }
 
 /// Only the exact size-only and fit-only patches the controls issue. An
 /// explicit frame geometry edit, mixed style edit, or other client op is left alone.
 fn is_transition(text: &Text, translation: bool, patch: &Value, sizing: bool) -> bool {
     if sizing {
-        let local = if translation { &patch["translation"] } else { patch };
+        let local = if translation {
+            &patch["translation"]
+        } else {
+            patch
+        };
         let size = &local["style"]["chars"]["size"];
-        size.as_f64().is_some_and(|size| size.is_finite() && size > 0.0)
+        size.as_f64()
+            .is_some_and(|size| size.is_finite() && size > 0.0)
             && *patch == wrapped(json!({"style": {"chars": {"size": size}}}), translation)
     } else {
         *patch == wrapped(fit_patch(text), translation)
@@ -120,22 +141,36 @@ mod tests {
     #[test]
     fn normalize_best_fit_without_changing_geometry() {
         for (frame, translation) in [
-            (json!({"box": {"bounds": {"x": 10, "y": 20, "width": 80, "height": 40}, "fit": "best"}}), false),
-            (json!({"path": {"path": "M10 20H90V60H10Z", "fit": "best"}}), true),
+            (
+                json!({"box": {"bounds": {"x": 10, "y": 20, "width": 80, "height": 40}, "fit": "best"}}),
+                false,
+            ),
+            (
+                json!({"path": {"path": "M10 20H90V60H10Z", "fit": "best"}}),
+                true,
+            ),
         ] {
             let text: Text = serde_json::from_value(json!({
                 "frame": frame, "style": {"chars": {"size": 32, "stroke_width": 2}},
                 "content": [{"insert": "Hi", "attributes": {"size": 32, "stroke_width": 4}}]
-            })).unwrap();
+            }))
+            .unwrap();
             assert!(text.is_best_fit());
             let requested = wrapped(json!({"style": {"chars": {"size": 19.0}}}), translation);
             assert!(is_transition(&text, translation, &requested, true));
             let choose = wrapped(fit_patch(&text), translation);
             assert!(is_transition(&text, translation, &choose, false));
             let patch = base_patch(&text, translation, 16.0, 0.5);
-            let local = if translation { &patch["translation"] } else { &patch };
+            let local = if translation {
+                &patch["translation"]
+            } else {
+                &patch
+            };
             assert_eq!(local["frame"], fit_patch(&text)["frame"]);
-            assert_eq!(local["style"]["chars"], json!({"size": 16.0, "stroke_width": 1.0}));
+            assert_eq!(
+                local["style"]["chars"],
+                json!({"size": 16.0, "stroke_width": 1.0})
+            );
             let mut spans = text.content.0.clone();
             scale_marks(&mut spans, 0.5);
             assert_eq!(spans[0].attributes.size, Some(16.0));

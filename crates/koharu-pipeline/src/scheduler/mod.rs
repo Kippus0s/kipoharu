@@ -17,7 +17,7 @@ use parking_lot::RwLock;
 use petgraph::{Direction::Incoming, stable_graph::NodeIndex};
 use tokio::{
     runtime::Handle,
-    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot},
     task::{self, JoinError, JoinSet},
     time::{self, Instant},
 };
@@ -40,11 +40,12 @@ const RECOGNIZE_PAGES: usize = 8;
 /// does, stays after a run last ended, as Ollama keeps a model five minutes
 /// after its last request, so filling again doesn't load it again.
 const KEEP: Duration = Duration::from_secs(5 * 60);
+const OCR_KEEP: Duration = Duration::from_secs(60);
 
 pub(crate) enum Command {
     Run(Run),
     Stop,
-    Unload,
+    Unload(oneshot::Sender<()>),
     /// The settings changed: unload what nothing uses now.
     Settle,
     Close(ProjectId),
@@ -97,6 +98,8 @@ pub(crate) struct Scheduler {
     conversations: Conversations,
     /// When the models no setting uses leave: `KEEP` after a run last ended.
     idle: Option<Instant>,
+    ocr_idle: Option<Instant>,
+    ocr_retained: bool,
 }
 
 impl Scheduler {
@@ -118,6 +121,8 @@ impl Scheduler {
             running: HashMap::new(),
             conversations: Conversations::default(),
             idle: None,
+            ocr_idle: None,
+            ocr_retained: false,
         };
         tokio::spawn(scheduler.run());
         sender
@@ -127,6 +132,7 @@ impl Scheduler {
         loop {
             tokio::select! {
                 command = self.commands.recv() => match command {
+                    Some(Command::Unload(done)) => self.unload(done).await,
                     Some(command) => self.handle(command),
                     None => break,
                 },
@@ -135,7 +141,16 @@ impl Scheduler {
                     if self.idle.is_some() =>
                 {
                     self.idle = None;
-                    self.settle();
+                    self.settle(true);
+                }
+                () = time::sleep_until(self.ocr_idle.unwrap_or_else(Instant::now)),
+                    if self.ocr_idle.is_some() =>
+                {
+                    self.ocr_idle = None;
+                    self.ocr_retained = false;
+                    self.gpu.run(Turn::Upkeep, |models| {
+                        models.retain_where(|key| key.stage != Stage::Recognize);
+                    });
                 }
             }
             self.admit();
@@ -157,23 +172,56 @@ impl Scheduler {
                 run: run.id,
                 outcome: Outcome::Done,
             }),
-            Command::Run(run) => self.runs.push(run),
-            Command::Stop => {
-                // Each task's call waiting for the GPU is dropped unrun.
-                for run in std::mem::take(&mut self.runs) {
-                    run.cancel.cancel();
-                    self.emit(Event::Ended {
-                        run: run.id,
-                        outcome: Outcome::Stopped,
-                    });
+            Command::Run(run) => {
+                let recognizes = run
+                    .graph
+                    .node_weights()
+                    .any(|job| job.stage == Stage::Recognize);
+                self.ocr_retained |= recognizes;
+                if run.mode == Mode::Batch || recognizes {
+                    self.ocr_idle = None;
                 }
-                self.rest();
+                self.runs.push(run);
             }
-            Command::Unload => self
-                .gpu
-                .run(Turn::Upkeep, |models| models.retain(&HashSet::new())),
-            Command::Settle => self.settle(),
+            Command::Stop => {
+                self.stop();
+                self.rest();
+                self.arm_ocr_idle();
+            }
+            Command::Unload(_) => unreachable!("unload is handled asynchronously"),
+            Command::Settle => self.settle(false),
             Command::Close(project) => self.conversations.close(project),
+        }
+    }
+
+    fn stop(&mut self) {
+        for run in std::mem::take(&mut self.runs) {
+            run.cancel.cancel();
+            self.emit(Event::Ended {
+                run: run.id,
+                outcome: Outcome::Stopped,
+            });
+        }
+    }
+
+    async fn unload(&mut self, done: oneshot::Sender<()>) {
+        self.stop();
+        self.idle = None;
+        self.ocr_idle = None;
+        // A translation task holds its own model handle outside the GPU queue.
+        // Drain those tasks before dropping the GPU thread's last handle.
+        while let Some(joined) = self.tasks.join_next_with_id().await {
+            self.done(joined);
+        }
+        self.ocr_idle = None;
+        self.ocr_retained = false;
+        let (finished, wait) = oneshot::channel();
+        self.gpu.run(Turn::Upkeep, move |models| {
+            models.unload();
+            let _ = finished.send(());
+        });
+        if wait.await.is_ok() {
+            let _ = done.send(());
         }
     }
 
@@ -239,6 +287,25 @@ impl Scheduler {
         if ended {
             self.rest();
         }
+        if stage == Stage::Recognize || ended {
+            self.arm_ocr_idle();
+        }
+    }
+
+    fn arm_ocr_idle(&mut self) {
+        let queued = self.runs.iter().any(|run| {
+            run.graph
+                .node_weights()
+                .any(|job| job.stage == Stage::Recognize)
+                || run.mode == Mode::Batch
+        });
+        let running = self
+            .running
+            .values()
+            .any(|task| task.stage == Stage::Recognize);
+        if self.ocr_retained && !queued && !running && self.ocr_idle.is_none() {
+            self.ocr_idle = Some(Instant::now() + OCR_KEEP);
+        }
     }
 
     /// A run ended: the models no setting uses leave `KEEP` from now, and
@@ -252,13 +319,21 @@ impl Scheduler {
 
     /// Unloads the models neither the settings nor a queued run use, once
     /// the GPU's current call ends.
-    fn settle(&self) {
+    fn settle(&self, idle: bool) {
         let mut wanted: HashSet<Key> = stages::chosen(&self.config.read()).collect();
-        for run in &self.runs {
-            wanted.extend(stages::chosen(&run.config));
-        }
-        self.gpu
-            .run(Turn::Upkeep, move |models| models.retain(&wanted));
+        let active: HashSet<Key> = self
+            .runs
+            .iter()
+            .flat_map(|run| stages::chosen(&run.config))
+            .collect();
+        wanted.extend(active.iter().cloned());
+        self.gpu.run(Turn::Upkeep, move |models| {
+            if idle {
+                models.retain_idle(wanted, &active);
+            } else {
+                models.retain(&wanted);
+            }
+        });
     }
 
     /// The ready jobs not yet started. A project's translation isn't ready

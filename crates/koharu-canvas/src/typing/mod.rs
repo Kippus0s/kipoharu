@@ -345,7 +345,10 @@ impl Typing {
         if self.composition.is_some() {
             self.settle();
         }
-        let before = self.composition_start.take().unwrap_or_else(|| self.state());
+        let before = self
+            .composition_start
+            .take()
+            .unwrap_or_else(|| self.state());
         let range = self.selected();
         let marks = self.marks();
         self.content = self.content.spliced(range.clone(), text, &marks);
@@ -511,7 +514,9 @@ impl Typing {
             }
             let range = self.selected();
             if !range.is_empty() {
-                self.content = self.content.spliced(range.clone(), "", &CharStyle::default());
+                self.content = self
+                    .content
+                    .spliced(range.clone(), "", &CharStyle::default());
                 self.caret = range.start;
                 self.anchor = range.start;
                 self.held = None;

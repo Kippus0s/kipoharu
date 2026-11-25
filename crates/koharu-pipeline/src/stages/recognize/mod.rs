@@ -46,7 +46,9 @@ pub(crate) async fn recognize(task: &Task, config: &PipelineConfig) -> anyhow::R
     let model = config.recognizer.model;
     let (texts, language) = task
         .inference(&members.iter().collect::<Vec<_>>(), move |models| {
-            let recognizer = models.get(&key, |device| model::load(model, device))?;
+            let recognizer = models.get(&key, koharu_runtime::Runtime::Torch, |device| {
+                model::load(model, device)
+            })?;
             let counts: Vec<usize> = crops.iter().map(Vec::len).collect();
             let (blocks, images): (Vec<LayerId>, Vec<DynamicImage>) =
                 crops.into_iter().flatten().unzip();

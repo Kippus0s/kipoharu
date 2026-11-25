@@ -235,7 +235,9 @@ impl Run<'_, '_> {
         // An explicit frame patch takes precedence; source text and masks are untouched.
         let resize = |before: &crate::Text, after: &mut crate::Text, patch: &Value| {
             if patch.get("frame").is_none()
-                && patch.pointer("/style/chars/size").is_some_and(Value::is_number)
+                && patch
+                    .pointer("/style/chars/size")
+                    .is_some_and(Value::is_number)
             {
                 after.scale_proportional_frame(before)
             } else {

@@ -31,6 +31,15 @@ pub enum Inpainter {
     QwenImage,
 }
 
+impl Inpainter {
+    pub(super) fn runtime(self) -> koharu_runtime::Runtime {
+        match self {
+            Self::Lama => koharu_runtime::Runtime::Torch,
+            Self::Flux3Klein | Self::QwenImage => koharu_runtime::Runtime::Diffusion,
+        }
+    }
+}
+
 /// An inpainter, loaded.
 pub(super) type Model = Box<dyn Inpaint + Send>;
 

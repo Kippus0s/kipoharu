@@ -141,7 +141,9 @@ pub(crate) async fn translate(
         Some(key) => {
             let (reference, images) = (translator.model.clone(), translator.vision);
             task.inference(&[member], move |models| {
-                let model = models.get(&key, |_| model::load(&reference, images))?;
+                let model = models.get(&key, koharu_runtime::Runtime::Llama, |_| {
+                    model::load(&reference, images)
+                })?;
                 Ok(DynModel::clone(model))
             })
             .await?

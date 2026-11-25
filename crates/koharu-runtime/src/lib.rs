@@ -38,21 +38,57 @@ pub fn root() -> Option<&'static Path> {
     ROOT.as_deref()
 }
 
-/// Where every model runs: the best GPU, once what it needs is downloaded and
-/// loaded. Every caller shares that start, and a failed one is tried again on
-/// the next call.
-pub async fn device() -> anyhow::Result<&'static Device> {
-    static DEVICE: OnceCell<Device> = OnceCell::const_new();
-    DEVICE
+/// The native inference backend a model actually uses.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Runtime {
+    Torch,
+    Llama,
+    Diffusion,
+}
+
+static DRIVER: OnceCell<Device> = OnceCell::const_new();
+static TORCH: OnceCell<Device> = OnceCell::const_new();
+static LLAMA: OnceCell<Device> = OnceCell::const_new();
+static DIFFUSION: OnceCell<Device> = OnceCell::const_new();
+
+/// Whether the native backend is ready. Never call its FFI before this.
+#[must_use]
+pub fn is_loaded(runtime: Runtime) -> bool {
+    cell(runtime).initialized()
+}
+
+/// The Torch device, without initializing Torch as a side effect.
+#[must_use]
+pub fn torch_device() -> Option<&'static Device> {
+    TORCH.get()
+}
+
+fn cell(runtime: Runtime) -> &'static OnceCell<Device> {
+    match runtime {
+        Runtime::Torch => &TORCH,
+        Runtime::Llama => &LLAMA,
+        Runtime::Diffusion => &DIFFUSION,
+    }
+}
+
+/// Select the shared device, then start only the requested backend. The
+/// native bindings are process-lifetime; model objects are not.
+pub async fn device(runtime: Runtime) -> anyhow::Result<&'static Device> {
+    let gpu = DRIVER
         .get_or_try_init(|| async {
             let gpu = hardware::candidates()
                 .into_iter()
                 .next()
                 .context("GPU is not available")?;
-            let device = packages::start(&gpu)
+            packages::start_driver(&gpu).await
+        })
+        .await?;
+    cell(runtime)
+        .get_or_try_init(|| async {
+            let device = packages::start_runtime(gpu, runtime)
                 .await
-                .with_context(|| format!("{} can't be used", gpu.description))?;
-            tracing::info!("models run on {}", device.description);
+                .with_context(|| format!("{} can't be used with {runtime:?}", gpu.description))?;
+            tracing::info!(?runtime, device = %device.description, "native runtime ready");
             Ok(device)
         })
         .await

@@ -6,7 +6,7 @@ use std::{
     num::NonZeroU32,
     path::Path,
     pin::Pin,
-    sync::{Mutex, OnceLock, PoisonError},
+    sync::{Mutex, PoisonError},
 };
 
 use anyhow::{Context, Result, ensure};
@@ -26,21 +26,52 @@ use crate::local::Size;
 const MARGIN: usize = 1 << 30;
 const MIN_CONTEXT: u32 = 4096;
 
-fn backend() -> Result<&'static LlamaBackend> {
-    static BACKEND: OnceLock<LlamaBackend> = OnceLock::new();
-    if let Some(backend) = BACKEND.get() {
-        return Ok(backend);
+// Every engine holds a lease until its native context and model have dropped.
+// Serialize the last release and next initialization, including engines used
+// by the agent; a weak Arc alone would race with the last destructor.
+static BACKEND: Mutex<(usize, Option<LlamaBackend>)> = Mutex::new((0, None));
+
+pub(super) struct BackendLease;
+
+impl BackendLease {
+    pub(super) fn acquire() -> Result<Self> {
+        let mut state = BACKEND.lock().unwrap_or_else(PoisonError::into_inner);
+        if state.0 == 0 {
+            koharu_llama::send_logs_to_tracing(koharu_llama::LogOptions::default());
+            state.1 = Some(LlamaBackend::init().context("couldn't start llama.cpp")?);
+        }
+        state.0 += 1;
+        Ok(Self)
     }
-    koharu_llama::send_logs_to_tracing(koharu_llama::LogOptions::default());
-    let backend = LlamaBackend::init().context("couldn't start llama.cpp")?;
-    Ok(BACKEND.get_or_init(|| backend))
+
+    fn with<T>(&self, use_backend: impl FnOnce(&LlamaBackend) -> Result<T>) -> Result<T> {
+        let state = BACKEND.lock().unwrap_or_else(PoisonError::into_inner);
+        use_backend(state.1.as_ref().expect("a live lease has a backend"))
+    }
+}
+
+impl Drop for BackendLease {
+    fn drop(&mut self) {
+        let mut state = BACKEND.lock().unwrap_or_else(PoisonError::into_inner);
+        state.0 -= 1;
+        if state.0 == 0 {
+            drop(state.1.take());
+            tracing::info!("last llama.cpp engine released its backend");
+        }
+    }
 }
 
 /// The model, loaded to fit, and the `size` it fits.
-pub(super) fn model(files: &Files, size: Size) -> Result<(LlamaModel, Size)> {
+pub(super) fn model(
+    backend: &BackendLease,
+    files: &Files,
+    size: Size,
+) -> Result<(LlamaModel, Size)> {
     let (params, context) = fit(files, size)?;
-    let model = LlamaModel::load_from_file(backend()?, &files.model, &params)
-        .with_context(|| format!("couldn't load {}", files.model.display()))?;
+    let model = backend.with(|backend| {
+        LlamaModel::load_from_file(backend, &files.model, &params)
+            .with_context(|| format!("couldn't load {}", files.model.display()))
+    })?;
     Ok((model, Size { context, ..size }))
 }
 
@@ -52,7 +83,6 @@ pub(super) fn model(files: &Files, size: Size) -> Result<(LlamaModel, Size)> {
 fn fit(files: &Files, size: Size) -> Result<(Pin<Box<LlamaModelParams>>, u32)> {
     // Fit swaps llama.cpp's global logger while it runs.
     static FITTING: Mutex<()> = Mutex::new(());
-    backend()?;
     let mut params = Box::pin(LlamaModelParams::default().with_devices(&[files.device])?);
     let mut context = context_params(size, None, None);
     // Fit doesn't count the projector.
@@ -104,6 +134,7 @@ pub(super) fn projector(model: &LlamaModel, path: &Path) -> Result<MtmdContext> 
 
 /// The context every sequence of `size` decodes in.
 pub(super) fn context<'m>(
+    backend: &BackendLease,
     model: &'m LlamaModel,
     size: Size,
     mtmd: Option<&MtmdContext>,
@@ -115,9 +146,11 @@ pub(super) fn context<'m>(
         Some(size.sequences * size.context),
         non_causal.then_some(batch_size(size)),
     );
-    model
-        .new_context(backend()?, params)
-        .context("couldn't create the llama.cpp context")
+    backend.with(|backend| {
+        model
+            .new_context(backend, params)
+            .context("couldn't create the llama.cpp context")
+    })
 }
 
 /// The batch a context decodes in: every running sequence decodes one token per

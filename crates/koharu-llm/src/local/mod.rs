@@ -252,7 +252,9 @@ pub(crate) async fn load(loading: Loading, size: Size) -> Result<DynModel<Comple
         size.sequences > 0 && size.context > 0,
         "a local model needs at least one sequence and one token of context"
     );
-    let device = koharu_runtime::device().await?.index;
+    let device = koharu_runtime::device(koharu_runtime::Runtime::Llama)
+        .await?
+        .index;
     tokio::task::spawn_blocking(move || {
         let Loading {
             spec,
@@ -268,9 +270,10 @@ pub(crate) async fn load(loading: Loading, size: Size) -> Result<DynModel<Comple
             projector,
             device,
         };
-        std::thread::Builder::new()
+        let worker = std::thread::Builder::new()
             .name(format!("llm {}", spec.id))
             .spawn(move || engine::serve(files, size, ready, queue))?;
+        let queue = Queue::new(jobs, worker);
         let loaded = loaded.recv().context("the model's thread stopped")??;
         // An answer, reasoning included, may take the quarter of the context
         // a conversation's `Context` keeps free for it.
@@ -291,7 +294,7 @@ pub(crate) async fn load(loading: Loading, size: Size) -> Result<DynModel<Comple
             markup,
             facts: ModelFacts::new(spec),
         };
-        Ok(Model::new(wire, Queue(jobs)).erase())
+        Ok(Model::new(wire, queue).erase())
     })
     .await?
 }
@@ -300,28 +303,60 @@ pub(crate) async fn load(loading: Loading, size: Size) -> Result<DynModel<Comple
 /// markup read as it comes back. The thread ends when the last handle is
 /// dropped.
 #[derive(Clone)]
-pub(crate) struct Queue(mpsc::Sender<Job>);
+pub(crate) struct Queue(Arc<Worker>);
+
+struct Worker {
+    jobs: Option<mpsc::Sender<Job>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Queue {
+    fn new(jobs: mpsc::Sender<Job>, thread: std::thread::JoinHandle<()>) -> Self {
+        Self(Arc::new(Worker {
+            jobs: Some(jobs),
+            thread: Some(thread),
+        }))
+    }
+}
+
+impl Drop for Worker {
+    fn drop(&mut self) {
+        // Closing the final sender lets the engine finish and destroy its
+        // context, projector and weights before the last model handle returns.
+        drop(self.jobs.take());
+        if let Some(thread) = self.thread.take()
+            && thread.join().is_err()
+        {
+            tracing::warn!("local model worker panicked");
+        }
+    }
+}
 
 impl Transport<Gguf> for Queue {
     fn send(&self, prompt: Prompt, _exchange: Exchange) -> Opening<Part> {
-        let jobs = self.0.clone();
+        let worker = Arc::clone(&self.0);
         Opening::new(async move {
             let (frames, replies) = tokio::sync::mpsc::unbounded_channel();
-            jobs.send(Job {
-                prompt: prompt.text,
-                images: prompt.images,
-                sampling: prompt.sampling,
-                schema: prompt.schema,
-                answer_after: prompt.answer_after,
-                frames,
-            })
-            .map_err(|_| ProviderError::Provider("the local model stopped".to_owned()))?;
+            worker
+                .jobs
+                .as_ref()
+                .expect("live worker has a sender")
+                .send(Job {
+                    prompt: prompt.text,
+                    images: prompt.images,
+                    sampling: prompt.sampling,
+                    schema: prompt.schema,
+                    answer_after: prompt.answer_after,
+                    frames,
+                })
+                .map_err(|_| ProviderError::Provider("the local model stopped".to_owned()))?;
             // Dropping the stream closes the channel, which ends the request
             // at the engine's next step.
             let reply = Parsed {
                 replies,
                 parser: prompt.parser,
                 ready: VecDeque::new(),
+                _worker: worker,
             };
             Ok(Opened::new(futures::stream::unfold(
                 reply,
@@ -339,6 +374,8 @@ struct Parsed {
     replies: tokio::sync::mpsc::UnboundedReceiver<Result<Step, ProviderError>>,
     parser: Parser,
     ready: VecDeque<Result<Part, ProviderError>>,
+    // Drop replies before the worker: the engine sees the cancellation before joining.
+    _worker: Arc<Worker>,
 }
 
 impl Parsed {
@@ -379,6 +416,25 @@ impl Parsed {
 #[cfg(test)]
 mod tests {
     use super::{markup::FUNCTION_TAGS, *};
+
+    #[test]
+    fn last_model_handle_waits_for_its_worker() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let (jobs, queue) = mpsc::channel::<Job>();
+        let released = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&released);
+        let thread = std::thread::spawn(move || {
+            while queue.recv().is_ok() {}
+            signal.store(true, Ordering::SeqCst);
+        });
+        let first = Queue::new(jobs, thread);
+        let last = first.clone();
+        drop(first);
+        assert!(!released.load(Ordering::SeqCst));
+        drop(last);
+        assert!(released.load(Ordering::SeqCst));
+    }
 
     #[test]
     fn the_spec_says_what_the_model_can_do() {

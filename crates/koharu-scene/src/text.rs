@@ -243,8 +243,14 @@ impl Text {
     /// Whether the layout chooses the size instead of drawing at the set size.
     #[must_use]
     pub fn is_best_fit(&self) -> bool {
-        matches!(&self.frame, Frame::Box { fit: Fit::Best, .. }
-            | Frame::Path { fit: PathFit::Best, .. })
+        matches!(
+            &self.frame,
+            Frame::Box { fit: Fit::Best, .. }
+                | Frame::Path {
+                    fit: PathFit::Best,
+                    ..
+                }
+        )
     }
 
     /// Scale only the text frame, not its transform or its containing block.
@@ -267,7 +273,9 @@ impl Text {
         }
         match &mut self.frame {
             Frame::Box {
-                bounds, fit: Fit::Proportional, ..
+                bounds,
+                fit: Fit::Proportional,
+                ..
             } => {
                 let width = bounds.width * ratio;
                 let height = bounds.height * ratio;
@@ -282,7 +290,9 @@ impl Text {
                 bounds.height = height;
             }
             Frame::Path {
-                path, fit: PathFit::Proportional, ..
+                path,
+                fit: PathFit::Proportional,
+                ..
             } => {
                 let mut outline = BezPath::from(&*path);
                 if outline.elements().is_empty() {

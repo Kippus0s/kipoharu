@@ -361,8 +361,7 @@ mod insertion_tests {
 
     #[test]
     fn new_rasters_go_directly_below_the_last_sidebar_panel()
-        -> std::result::Result<(), Box<dyn std::error::Error>>
-    {
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let mut session = Session::create(dir.path().join("test.khr"))?;
         let changes = session.apply(Edit {

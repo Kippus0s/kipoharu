@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
         .map(image::open)
         .collect::<Result<Vec<_>, _>>()?;
 
-    let device = koharu_runtime::device().await?;
+    let device = koharu_runtime::device(koharu_runtime::Runtime::Diffusion).await?;
     let pipeline = QwenImage::load(device).await?;
     let options = Options {
         negative_prompt: cli.negative_prompt,

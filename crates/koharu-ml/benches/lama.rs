@@ -16,7 +16,7 @@ async fn main() -> Result<()> {
     let image = image::open(&image_path)?;
     let mask = image::open(&mask_path)?.to_luma8();
 
-    let device = koharu_runtime::device().await?;
+    let device = koharu_runtime::device(koharu_runtime::Runtime::Torch).await?;
     let model = Lama::load(device).await?;
 
     let mut criterion = Criterion::default()

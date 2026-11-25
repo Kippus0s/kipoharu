@@ -97,9 +97,15 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
                 // layout on screen; the host normalizes it before applying this edit.
                 let old = if text.is_best_fit() {
                     let frame = cx.snapshot.frame();
-                    let drawn = if translation { frame.translation(*id) } else { frame.layer(*id) };
-                    drawn.and_then(|drawn| drawn.text())
-                        .map_or_else(|| text.style.chars.size.unwrap_or(24.0), |laid| laid.effective_size(text))
+                    let drawn = if translation {
+                        frame.translation(*id)
+                    } else {
+                        frame.layer(*id)
+                    };
+                    drawn.and_then(|drawn| drawn.text()).map_or_else(
+                        || text.style.chars.size.unwrap_or(24.0),
+                        |laid| laid.effective_size(text),
+                    )
                 } else {
                     text.style.chars.size.unwrap_or(24.0)
                 };
@@ -118,7 +124,12 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
                     patch,
                 }];
                 // Span-specific sizes override the text's base style; clear them as TypeBar does.
-                if text.content.0.iter().any(|span| span.attributes.size.is_some()) {
+                if text
+                    .content
+                    .0
+                    .iter()
+                    .any(|span| span.attributes.size.is_some())
+                {
                     let spans = text
                         .content
                         .0

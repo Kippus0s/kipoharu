@@ -47,20 +47,25 @@ pub struct Memory {
 
 impl Device {
     /// The device's free and total memory now, as llama.cpp's backend reads
-    /// them from the driver, or the system's for the CPU.
+    /// them from the driver, or the system's for the CPU. Unknown until the
+    /// llama runtime has started; reporting memory must not start it.
     #[must_use]
-    pub fn memory(&self) -> Memory {
+    pub fn memory(&self) -> Option<Memory> {
+        if !crate::is_loaded(crate::Runtime::Llama) {
+            return None;
+        }
         let (mut free, mut total) = (0, 0);
         let name = CString::new(self.name.as_str()).expect("llama.cpp's names have no NUL");
-        // The runtime hands out a device only after llama.cpp loaded and
-        // listed it under its name.
         unsafe {
             let device = koharu_llama_sys::ggml_backend_dev_by_name(name.as_ptr());
+            if device.is_null() {
+                return None;
+            }
             koharu_llama_sys::ggml_backend_dev_memory(device, &mut free, &mut total);
         }
-        Memory {
+        Some(Memory {
             free: free as u64,
             total: total as u64,
-        }
+        })
     }
 }

@@ -308,7 +308,9 @@ fn apply(fixture: &mut Fixture, effects: Vec<Effect>) -> Vec<String> {
             labels.push(edit.label.clone());
             {
                 let mut session = fixture.session.lock();
-                let edit = fixture.renderer.prepare_manual_text_edit(&session.project(), edit)
+                let edit = fixture
+                    .renderer
+                    .prepare_manual_text_edit(&session.project(), edit)
                     .expect("prepare manual text edit");
                 session.apply(edit).expect("the edit applies");
             }
@@ -683,7 +685,15 @@ fn a_remove_stroke_asks_to_inpaint_what_it_covered() {
     fixture.canvas.set_tool(Tool::Remove);
     fixture.canvas.set_brush(brush(8.0, [0.0, 0.0, 0.0, 1.0]));
     let effects = gesture(&mut fixture.canvas, (20.0, 20.0), (40.0, 20.0));
-    let [Effect::Inpaint { page, rect, mask, raster }] = &effects[..] else {
+    let [
+        Effect::Inpaint {
+            page,
+            rect,
+            mask,
+            raster,
+        },
+    ] = &effects[..]
+    else {
         panic!("{effects:?}");
     };
     assert_eq!(*page, fixture.page);
@@ -1085,7 +1095,12 @@ fn rendered_size(fixture: &Fixture, id: LayerId) -> f64 {
         koharu_scene::Content::Block(block) => block.translation.as_ref().expect("translation"),
         _ => panic!("text layer"),
     };
-    fixture.renderer.layout(id, text).expect("layout").expect("text").effective_size(text)
+    fixture
+        .renderer
+        .layout(id, text)
+        .expect("layout")
+        .expect("text")
+        .effective_size(text)
 }
 
 #[test]
@@ -1103,7 +1118,9 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
                 "frame": {"path": {"path": "M200 100H280V140H200Z", "fit": "best"}}
             },
         }}),
-    ]) else { return; };
+    ]) else {
+        return;
+    };
     let ids = layers(&fixture);
     fixture.canvas.set_tool(Tool::Select);
     fixture.canvas.select(ids.clone());
@@ -1112,8 +1129,14 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
     assert!((sizes[0] - 12.0).abs() > 1.0);
     assert!((sizes[1] - 120.0).abs() > 1.0);
     let camera = fixture.canvas.camera();
-    let effects = fixture.canvas.input(scroll((200.0, 200.0),
-        ScrollDelta::LineDelta(0.0, -1.0), Modifiers::ALT)).expect("input");
+    let effects = fixture
+        .canvas
+        .input(scroll(
+            (200.0, 200.0),
+            ScrollDelta::LineDelta(0.0, -1.0),
+            Modifiers::ALT,
+        ))
+        .expect("input");
     assert_eq!(apply(&mut fixture, effects), ["set_style"]);
     for (i, id) in ids.iter().enumerate() {
         let new = layer(&fixture, *id);
@@ -1126,7 +1149,10 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
         if i == 0 {
             let frame = &text["frame"]["box"];
             assert_eq!(frame["fit"], "proportional");
-            assert!(near(frame["bounds"]["width"].as_f64().unwrap(), 100.0 * ratio));
+            assert!(near(
+                frame["bounds"]["width"].as_f64().unwrap(),
+                100.0 * ratio
+            ));
         } else {
             let frame = &text["frame"]["path"];
             assert_eq!(frame["fit"], "proportional");
@@ -1155,37 +1181,91 @@ fn manual_best_to_proportional_keeps_frame_then_size_edit_scales_it() {
                 "frame": {"path": {"path": "M200 100H280V140H200Z", "fit": "best"}}
             }
         }}),
-    ]) else { return; };
+    ]) else {
+        return;
+    };
     let ids = layers(&fixture);
     let old: Vec<_> = ids.iter().map(|id| layer(&fixture, *id)).collect();
     let sizes: Vec<_> = ids.iter().map(|id| rendered_size(&fixture, *id)).collect();
     let fit_ops = vec![
-        Op::UpdateLayer { layer: ids[0].into(), patch: json!({"frame": {"box": {"fit": "proportional"}}}) },
-        Op::UpdateLayer { layer: ids[1].into(), patch: json!({"translation": {"frame": {"path": {"fit": "proportional"}}}}) },
+        Op::UpdateLayer {
+            layer: ids[0].into(),
+            patch: json!({"frame": {"box": {"fit": "proportional"}}}),
+        },
+        Op::UpdateLayer {
+            layer: ids[1].into(),
+            patch: json!({"translation": {"frame": {"path": {"fit": "proportional"}}}}),
+        },
     ];
-    assert_eq!(apply(&mut fixture, vec![Effect::Edit(Edit { label: "update_layer".into(), ops: fit_ops })]), ["update_layer"]);
+    assert_eq!(
+        apply(
+            &mut fixture,
+            vec![Effect::Edit(Edit {
+                label: "update_layer".into(),
+                ops: fit_ops
+            })]
+        ),
+        ["update_layer"]
+    );
     let boxed = layer(&fixture, ids[0]);
     let block = layer(&fixture, ids[1]);
-    assert_eq!(boxed["frame"]["box"]["bounds"], old[0]["frame"]["box"]["bounds"]);
-    assert_eq!(block["translation"]["frame"]["path"]["path"], old[1]["translation"]["frame"]["path"]["path"]);
+    assert_eq!(
+        boxed["frame"]["box"]["bounds"],
+        old[0]["frame"]["box"]["bounds"]
+    );
+    assert_eq!(
+        block["translation"]["frame"]["path"]["path"],
+        old[1]["translation"]["frame"]["path"]["path"]
+    );
     assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
     assert_eq!(block["translation"]["frame"]["path"]["fit"], "proportional");
-    assert!(near(boxed["style"]["chars"]["size"].as_f64().unwrap(), sizes[0]));
-    assert!(near(block["translation"]["style"]["chars"]["size"].as_f64().unwrap(), sizes[1]));
+    assert!(near(
+        boxed["style"]["chars"]["size"].as_f64().unwrap(),
+        sizes[0]
+    ));
+    assert!(near(
+        block["translation"]["style"]["chars"]["size"]
+            .as_f64()
+            .unwrap(),
+        sizes[1]
+    ));
     fixture.session.lock().undo().expect("undo");
     fixture.render();
     // A TypeBar absolute size request on the original Best Fit selection.
     let size_ops = vec![
-        Op::UpdateLayer { layer: ids[0].into(), patch: json!({"style": {"chars": {"size": 36}}}) },
-        Op::UpdateLayer { layer: ids[1].into(), patch: json!({"translation": {"style": {"chars": {"size": 36}}}}) },
+        Op::UpdateLayer {
+            layer: ids[0].into(),
+            patch: json!({"style": {"chars": {"size": 36}}}),
+        },
+        Op::UpdateLayer {
+            layer: ids[1].into(),
+            patch: json!({"translation": {"style": {"chars": {"size": 36}}}}),
+        },
     ];
-    assert_eq!(apply(&mut fixture, vec![Effect::Edit(Edit { label: "set_style".into(), ops: size_ops })]), ["set_style"]);
+    assert_eq!(
+        apply(
+            &mut fixture,
+            vec![Effect::Edit(Edit {
+                label: "set_style".into(),
+                ops: size_ops
+            })]
+        ),
+        ["set_style"]
+    );
     let boxed = layer(&fixture, ids[0]);
     let block = layer(&fixture, ids[1]);
     assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
     assert_eq!(block["translation"]["frame"]["path"]["fit"], "proportional");
-    assert!(near(boxed["frame"]["box"]["bounds"]["width"].as_f64().unwrap(), 100.0 * 36.0 / sizes[0]));
-    let path = BezPath::from_svg(block["translation"]["frame"]["path"]["path"].as_str().unwrap()).unwrap();
+    assert!(near(
+        boxed["frame"]["box"]["bounds"]["width"].as_f64().unwrap(),
+        100.0 * 36.0 / sizes[0]
+    ));
+    let path = BezPath::from_svg(
+        block["translation"]["frame"]["path"]["path"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
     assert!((path.bounding_box().width() - 80.0 * 36.0 / sizes[1]).abs() < 1e-6);
 }
 
@@ -1199,21 +1279,31 @@ fn alt_wheel_preserves_fixed_shrink_and_grow_modes() {
         }}));
     }
     for fit in ["none", "shrink"] {
-        ops.push(json!({"op": "add_layer", "page": "$page", "index": ops.len(), "layer": {
-            "kind": "block", "source": {"content": "original"}, "translation": {
-                "content": "Hi", "style": {"chars": {"size": 40}},
-                "frame": {"path": {"path": "M200 100L280 100L280 140L200 140Z", "fit": fit}}
-            }
-        }}));
+        ops.push(
+            json!({"op": "add_layer", "page": "$page", "index": ops.len(), "layer": {
+                "kind": "block", "source": {"content": "original"}, "translation": {
+                    "content": "Hi", "style": {"chars": {"size": 40}},
+                    "frame": {"path": {"path": "M200 100L280 100L280 140L200 140Z", "fit": fit}}
+                }
+            }}),
+        );
     }
-    let Some(mut fixture) = unscaled(ops) else { return; };
+    let Some(mut fixture) = unscaled(ops) else {
+        return;
+    };
     let ids = layers(&fixture);
     fixture.canvas.set_tool(Tool::Select);
     fixture.canvas.select(ids.clone());
     let before: Vec<_> = ids.iter().map(|id| layer(&fixture, *id)).collect();
     for (delta, size) in [(-1.0, 41.0), (1.0, 40.0)] {
-        let effects = fixture.canvas.input(scroll((200.0, 200.0),
-            ScrollDelta::LineDelta(0.0, delta), Modifiers::ALT)).expect("input");
+        let effects = fixture
+            .canvas
+            .input(scroll(
+                (200.0, 200.0),
+                ScrollDelta::LineDelta(0.0, delta),
+                Modifiers::ALT,
+            ))
+            .expect("input");
         assert_eq!(apply(&mut fixture, effects), ["set_style"]);
         for (id, old) in ids.iter().zip(&before) {
             let new = layer(&fixture, *id);
@@ -1241,16 +1331,25 @@ fn alt_wheel_scales_proportional_box_and_balloon_translation() {
                 "frame": {"path": {"path": "M200 100L280 100L280 140L200 140Z", "fit": "proportional"}}
             }
         }}),
-    ]) else { return; };
+    ]) else {
+        return;
+    };
     let ids = layers(&fixture);
     fixture.canvas.set_tool(Tool::Select);
     fixture.canvas.select(ids.clone());
     let before = fixture.canvas.camera();
     for (delta, box_size, path_size, box_width, path_width) in [
-        (-1.0, 41.0, 21.0, 82.0, 84.0), (1.0, 40.0, 20.0, 80.0, 80.0),
+        (-1.0, 41.0, 21.0, 82.0, 84.0),
+        (1.0, 40.0, 20.0, 80.0, 80.0),
     ] {
-        let effects = fixture.canvas.input(scroll((200.0, 200.0),
-            ScrollDelta::LineDelta(0.0, delta), Modifiers::ALT)).expect("input");
+        let effects = fixture
+            .canvas
+            .input(scroll(
+                (200.0, 200.0),
+                ScrollDelta::LineDelta(0.0, delta),
+                Modifiers::ALT,
+            ))
+            .expect("input");
         assert_eq!(apply(&mut fixture, effects), ["set_style"]);
         let boxed = layer(&fixture, ids[0]);
         let block = layer(&fixture, ids[1]);
@@ -1259,9 +1358,12 @@ fn alt_wheel_scales_proportional_box_and_balloon_translation() {
         assert_eq!(translation["style"]["chars"]["size"], json!(path_size));
         assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
         assert_eq!(translation["frame"]["path"]["fit"], "proportional");
-        let width = boxed["frame"]["box"]["bounds"]["width"].as_f64().expect("width");
+        let width = boxed["frame"]["box"]["bounds"]["width"]
+            .as_f64()
+            .expect("width");
         assert!(near(width, box_width));
-        let path = BezPath::from_svg(translation["frame"]["path"]["path"].as_str().expect("path")).expect("SVG");
+        let path = BezPath::from_svg(translation["frame"]["path"]["path"].as_str().expect("path"))
+            .expect("SVG");
         assert!(near(path.bounding_box().width(), path_width));
         assert!(near(path.bounding_box().center().x, 240.0));
         assert_eq!(fixture.canvas.camera(), before);
@@ -1889,7 +1991,10 @@ fn type_chord(canvas: &mut Canvas, letter: &str, code: Code, modifiers: Modifier
         .key(&pressed)
         .expect("a shortcut")
         .expect("typing takes the shortcut");
-    assert!(effects.is_empty(), "the shortcut edits only the typing session");
+    assert!(
+        effects.is_empty(),
+        "the shortcut edits only the typing session"
+    );
     canvas
         .key(&KeyboardEvent {
             state: KeyState::Up,
@@ -1947,7 +2052,10 @@ fn escape_keeps_text_and_an_empty_commit_adds_no_text() {
     assert_eq!(apply(&mut fixture, escaped), ["add_text"]);
     assert!(fixture.canvas.typing().is_none());
     let text = layers(&fixture)[0];
-    assert_eq!(layer(&fixture, text)["content"], json!([{"insert": "Gone"}]));
+    assert_eq!(
+        layer(&fixture, text)["content"],
+        json!([{"insert": "Gone"}])
+    );
     // Committing a subsequent empty draft leaves the saved text alone.
     gesture(&mut fixture.canvas, (300.0, 380.0), (300.0, 380.0));
     let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
@@ -2026,7 +2134,10 @@ fn canvas_typing_undo_redo_each_edit_and_drop_redo_after_new_typing() {
     let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
     assert_eq!(apply(&mut fixture, effects), ["add_text"]);
     let text = layers(&fixture)[0];
-    assert_eq!(layer(&fixture, text)["content"], json!([{"insert": "Hell!"}]));
+    assert_eq!(
+        layer(&fixture, text)["content"],
+        json!([{"insert": "Hell!"}])
+    );
 }
 
 #[test]
@@ -2042,7 +2153,12 @@ fn canvas_typing_undo_restores_select_all_delete_and_rich_text() {
     fixture.canvas.set_tool(Tool::Text);
     gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
     type_chord(&mut fixture.canvas, "a", Code::KeyA, CONTROL);
-    press_key(&mut fixture.canvas, NamedKey::Delete, Code::Delete, Modifiers::default());
+    press_key(
+        &mut fixture.canvas,
+        NamedKey::Delete,
+        Code::Delete,
+        Modifiers::default(),
+    );
     type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
     // Ctrl+Shift+Z is redo too, and leaves the text box in edit mode.
     type_chord(&mut fixture.canvas, "Z", Code::KeyZ, CONTROL | SHIFT);
@@ -2062,17 +2178,23 @@ fn canvas_typing_undo_redo_restores_selected_formatting() {
     fixture.canvas.set_tool(Tool::Text);
     gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
     type_chord(&mut fixture.canvas, "a", Code::KeyA, CONTROL);
-    fixture.canvas.style_typing(&koharu_scene::CharStyle {
-        weight: Some(700),
-        ..Default::default()
-    }).expect("a style");
+    fixture
+        .canvas
+        .style_typing(&koharu_scene::CharStyle {
+            weight: Some(700),
+            ..Default::default()
+        })
+        .expect("a style");
     type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
     type_chord(&mut fixture.canvas, "y", Code::KeyY, CONTROL);
     let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
     assert_eq!(apply(&mut fixture, effects), ["set_text"]);
-    assert_eq!(layer(&fixture, text)["content"], json!([
-        {"insert": "Hello", "attributes": {"weight": 700}}
-    ]));
+    assert_eq!(
+        layer(&fixture, text)["content"],
+        json!([
+            {"insert": "Hello", "attributes": {"weight": 700}}
+        ])
+    );
 }
 
 #[test]

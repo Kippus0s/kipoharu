@@ -175,13 +175,18 @@ fn reused(
 
     // A raster with other mask modes cannot be safely extended by a union;
     // make a new result rather than alter the meaning of its existing masks.
-    let masks: Vec<_> = layer.children.iter().filter_map(|child| {
-        match &child.content {
+    let masks: Vec<_> = layer
+        .children
+        .iter()
+        .filter_map(|child| match &child.content {
             Content::Mask(mask) if child.visible => Some((child, mask)),
             _ => None,
-        }
-    }).collect();
-    if masks.iter().any(|(child, mask)| child.locked || mask.mode != MaskMode::Add) {
+        })
+        .collect();
+    if masks
+        .iter()
+        .any(|(child, mask)| child.locked || mask.mode != MaskMode::Add)
+    {
         return Ok(None);
     }
     let (rect, coverage) = limit;
@@ -336,25 +341,53 @@ mod tests {
             json!({"op": "write_pixels", "layer": "$paint",
                 "rect": {"x": 1, "y": 0, "width": 2, "height": 1},
                 "pixels": [255, 0, 0, 255, 255, 0, 0, 255]}),
-        ].into_iter().map(serde_json::from_value).collect::<std::result::Result<_, _>>()?;
-        let change = session.apply(Edit { label: "paint".to_owned(), ops: setup })?;
+        ]
+        .into_iter()
+        .map(serde_json::from_value)
+        .collect::<std::result::Result<_, _>>()?;
+        let change = session.apply(Edit {
+            label: "paint".to_owned(),
+            ops: setup,
+        })?;
         let page = change.pages.added[0];
-        let raster = change.created.iter().find_map(|item| match item {
-            koharu_scene::Created::Layer { id, .. } => Some(*id),
-            _ => None,
-        }).expect("created the Brush raster");
-        let rect = Rect { x: 1, y: 0, width: 2, height: 1 };
+        let raster = change
+            .created
+            .iter()
+            .find_map(|item| match item {
+                koharu_scene::Created::Layer { id, .. } => Some(*id),
+                _ => None,
+            })
+            .expect("created the Brush raster");
+        let rect = Rect {
+            x: 1,
+            y: 0,
+            width: 2,
+            height: 1,
+        };
         let blue = vec![0, 0, 255, 255].repeat(2);
-        let ops = reused(&session, page, raster, &json!({}), &(rect, blue),
-            &(rect, vec![255, 0]))?.expect("reused the Brush raster");
+        let ops = reused(
+            &session,
+            page,
+            raster,
+            &json!({}),
+            &(rect, blue),
+            &(rect, vec![255, 0]),
+        )?
+        .expect("reused the Brush raster");
         assert_eq!(ops.len(), 2, "write pixels and provenance, without a mask");
         assert!(ops.iter().all(|op| !matches!(op, Op::AddLayer { .. })));
-        session.apply(Edit { label: "remove".to_owned(), ops })?;
+        session.apply(Edit {
+            label: "remove".to_owned(),
+            ops,
+        })?;
         let painted = session.pixels(raster, rect)?;
         assert_eq!(painted, [0, 0, 255, 255, 255, 0, 0, 255]);
         assert!(session.project().layer(raster)?.children.is_empty());
         session.undo()?;
-        assert_eq!(session.pixels(raster, rect)?, vec![255, 0, 0, 255].repeat(2));
+        assert_eq!(
+            session.pixels(raster, rect)?,
+            vec![255, 0, 0, 255].repeat(2)
+        );
         session.redo()?;
         assert_eq!(session.pixels(raster, rect)?, painted);
         Ok(())
@@ -379,23 +412,55 @@ mod tests {
             json!({"op": "write_pixels", "layer": "$mask",
                 "rect": {"x": 0, "y": 0, "width": 3, "height": 1},
                 "pixels": [255, 0, 0]}),
-        ].into_iter().map(serde_json::from_value).collect::<std::result::Result<_, _>>()?;
-        let change = session.apply(Edit { label: "remove".to_owned(), ops: setup })?;
+        ]
+        .into_iter()
+        .map(serde_json::from_value)
+        .collect::<std::result::Result<_, _>>()?;
+        let change = session.apply(Edit {
+            label: "remove".to_owned(),
+            ops: setup,
+        })?;
         let page = change.pages.added[0];
-        let id = |label: &str| change.created.iter().find_map(|item| match item {
-            koharu_scene::Created::Layer { id, label: Some(found) } if found == label => Some(*id),
-            _ => None,
-        }).expect("created requested layer");
+        let id = |label: &str| {
+            change
+                .created
+                .iter()
+                .find_map(|item| match item {
+                    koharu_scene::Created::Layer {
+                        id,
+                        label: Some(found),
+                    } if found == label => Some(*id),
+                    _ => None,
+                })
+                .expect("created requested layer")
+        };
         let (raster, mask) = (id("raster"), id("mask"));
-        let rect = Rect { x: 0, y: 0, width: 3, height: 1 };
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            width: 3,
+            height: 1,
+        };
         let blue = vec![0, 0, 255, 255].repeat(3);
-        let ops = reused(&session, page, raster, &json!({}), &(rect, blue),
-            &(rect, vec![0, 255, 0]))?.expect("reused the Remove raster");
+        let ops = reused(
+            &session,
+            page,
+            raster,
+            &json!({}),
+            &(rect, blue),
+            &(rect, vec![0, 255, 0]),
+        )?
+        .expect("reused the Remove raster");
         assert_eq!(ops.len(), 3, "raster write, mask write, provenance");
-        session.apply(Edit { label: "remove".to_owned(), ops })?;
+        session.apply(Edit {
+            label: "remove".to_owned(),
+            ops,
+        })?;
         assert_eq!(session.pixels(mask, rect)?, vec![255, 255, 0]);
-        assert_eq!(session.pixels(raster, rect)?,
-            [255, 0, 0, 255, 0, 0, 255, 255, 255, 0, 0, 255]);
+        assert_eq!(
+            session.pixels(raster, rect)?,
+            [255, 0, 0, 255, 0, 0, 255, 255, 255, 0, 0, 255]
+        );
         assert_eq!(session.project().page(page)?.layers.len(), 1);
         session.undo()?;
         assert_eq!(session.pixels(mask, rect)?, vec![255, 0, 0]);

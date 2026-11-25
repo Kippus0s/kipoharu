@@ -33,7 +33,7 @@ async fn main() -> Result<()> {
     let input = cli.input.as_ref().map(image::open).transpose()?;
     let reference = cli.reference.as_ref().map(image::open).transpose()?;
 
-    let device = koharu_runtime::device().await?;
+    let device = koharu_runtime::device(koharu_runtime::Runtime::Diffusion).await?;
     let pipeline = Flux3Klein::load(device).await?;
 
     let options = GenerateOptions {

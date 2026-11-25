@@ -20,7 +20,7 @@ pub enum Error {
     Load {
         model: String,
         device: String,
-        free: ByteSize,
+        free: String,
         reserved: ByteSize,
         active: ByteSize,
         #[source]

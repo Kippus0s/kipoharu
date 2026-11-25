@@ -154,7 +154,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "downloads the checkpoint and requires CUDA"]
     async fn checkpoint_matches_rfdetr_upstream_structured_output() -> Result<()> {
-        let device = koharu_runtime::device().await?;
+        let device = koharu_runtime::device(koharu_runtime::Runtime::Torch).await?;
         let image = image::open(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("benches/fixtures/object_detection/1.jpg"),

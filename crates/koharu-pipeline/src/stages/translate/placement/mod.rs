@@ -87,7 +87,8 @@ pub fn placement(
         chars.insert("stroke".to_owned(), json!(Rgba([1.0; 4])));
         chars.insert("stroke_width".to_owned(), json!(3.0));
     }
-    if inherit_source_colors && given.and_then(|style| style.chars.fill).is_none()
+    if inherit_source_colors
+        && given.and_then(|style| style.chars.fill).is_none()
         && let Some(fill) = source.fill
     {
         chars.insert("fill".to_owned(), json!(fill));
@@ -435,16 +436,21 @@ mod tests {
     }
 
     #[test]
-    fn translations_can_use_black_with_white_outline_without_changing_source_colours() -> Result<()> {
+    fn translations_can_use_black_with_white_outline_without_changing_source_colours() -> Result<()>
+    {
         let red = Rgba([1.0, 0.0, 0.0, 1.0]);
         let white = Rgba([1.0; 4]);
         let dir = tempfile::tempdir()?;
         let (mut session, ids) = page(
             &dir,
-            &[("text", None, json!({"kind": "block", "role": "text", "source": {
-                "frame": {"box": {"bounds": {"x": 0.0, "y": 0.0, "width": 120.0, "height": 120.0}}},
-                "style": {"chars": {"fill": red, "stroke": white, "stroke_width": 2.0}},
-            }}))],
+            &[(
+                "text",
+                None,
+                json!({"kind": "block", "role": "text", "source": {
+                    "frame": {"box": {"bounds": {"x": 0.0, "y": 0.0, "width": 120.0, "height": 120.0}}},
+                    "style": {"chars": {"fill": red, "stroke": white, "stroke_width": 2.0}},
+                }}),
+            )],
         )?;
         let text = placed_with(&mut session, ids[0], &langid!("en"), false)?;
         assert_eq!(text.style.chars.fill, Some(Rgba([0.0, 0.0, 0.0, 1.0])));

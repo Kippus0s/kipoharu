@@ -146,7 +146,8 @@ pub(crate) async fn inpaint(
             if work.regions.is_empty() {
                 return Ok(work);
             }
-            let inpainter = models.get(&key, |device| model::load(model, device))?;
+            let inpainter =
+                models.get(&key, model.runtime(), |device| model::load(model, device))?;
             // Stop ends the redraw under way as well as the windows after it.
             let _stop = inpainter.canceller().map(|canceller| {
                 let cancel = cancel.clone();

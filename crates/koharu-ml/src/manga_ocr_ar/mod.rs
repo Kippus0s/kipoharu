@@ -81,7 +81,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "downloads the checkpoint and requires the LibTorch runtime"]
     async fn checkpoint_matches_upstream_text() -> anyhow::Result<()> {
-        let device = koharu_runtime::device().await?;
+        let device = koharu_runtime::device(koharu_runtime::Runtime::Torch).await?;
         let model = MangaOcrAr::load(device).await?;
         let input =
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("benches/fixtures/ocr/title.png");

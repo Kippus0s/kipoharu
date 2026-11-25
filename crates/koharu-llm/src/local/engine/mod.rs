@@ -97,12 +97,17 @@ pub(super) fn serve(
     ready: SyncSender<Result<Loaded>>,
     queue: Receiver<Job>,
 ) {
-    let (model, size) = match load::model(&files, size) {
+    // Declared before the native model so its destructor runs last.
+    let backend = match load::BackendLease::acquire() {
+        Ok(backend) => backend,
+        Err(error) => return drop(ready.send(Err(error))),
+    };
+    let (model, size) = match load::model(&backend, &files, size) {
         Ok(loaded) => loaded,
         Err(error) => return drop(ready.send(Err(error))),
     };
     let started = Template::new(&model)
-        .and_then(|template| Ok((template, Engine::new(&model, &files, size)?)));
+        .and_then(|template| Ok((template, Engine::new(&backend, &model, &files, size)?)));
     let (template, engine) = match started {
         Ok(started) => started,
         Err(error) => return drop(ready.send(Err(error))),
@@ -161,7 +166,12 @@ impl Sequence {
 }
 
 impl<'m> Engine<'m> {
-    fn new(model: &'m LlamaModel, files: &Files, size: Size) -> Result<Self> {
+    fn new(
+        backend: &load::BackendLease,
+        model: &'m LlamaModel,
+        files: &Files,
+        size: Size,
+    ) -> Result<Self> {
         let mtmd = files
             .projector
             .as_deref()
@@ -170,7 +180,7 @@ impl<'m> Engine<'m> {
         let n_batch = load::batch_size(size);
         Ok(Self {
             model,
-            context: load::context(model, size, mtmd.as_ref())?,
+            context: load::context(backend, model, size, mtmd.as_ref())?,
             mtmd,
             size,
             batch: LlamaBatch::new(n_batch, 1),

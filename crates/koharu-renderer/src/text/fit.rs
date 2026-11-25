@@ -752,7 +752,11 @@ mod tests {
     fn proportional_font_and_frame_keep_line_breaks() -> Result<()> {
         for path in [false, true] {
             let layout = |scale: f32| -> Result<Placed> {
-                let (mut styled, _) = in_box(100.0 * f64::from(scale), 60.0 * f64::from(scale), "proportional")?;
+                let (mut styled, _) = in_box(
+                    100.0 * f64::from(scale),
+                    60.0 * f64::from(scale),
+                    "proportional",
+                )?;
                 if path {
                     let w = 100.0 * scale;
                     let h = 60.0 * scale;
@@ -784,8 +788,16 @@ mod tests {
             assert_eq!(enlarged.scale, 1.0);
             assert!(original.lines.len() > 1);
             assert_eq!(
-                original.lines.iter().map(|line| &line.segments).collect::<Vec<_>>(),
-                enlarged.lines.iter().map(|line| &line.segments).collect::<Vec<_>>(),
+                original
+                    .lines
+                    .iter()
+                    .map(|line| &line.segments)
+                    .collect::<Vec<_>>(),
+                enlarged
+                    .lines
+                    .iter()
+                    .map(|line| &line.segments)
+                    .collect::<Vec<_>>(),
             );
         }
         Ok(())

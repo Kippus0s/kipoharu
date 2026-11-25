@@ -16,7 +16,7 @@ use std::{
 };
 
 use bytesize::ByteSize;
-use koharu_runtime::Device;
+use koharu_runtime::{Device, Runtime};
 use koharu_torch::Cuda;
 use tokio::runtime::Handle;
 use tokio_util::sync::CancellationToken;
@@ -57,7 +57,7 @@ impl Gpu {
                     runtime,
                     shutdown,
                     loaded: HashMap::new(),
-                    device: None,
+                    last_inpaint: None,
                 };
                 let mut queue = BinaryHeap::new();
                 let mut sent = 0;
@@ -138,8 +138,7 @@ pub(crate) struct Models {
     runtime: Handle,
     shutdown: CancellationToken,
     loaded: HashMap<Key, Box<dyn Any + Send>>,
-    /// The runtime's device, once a model has loaded on it.
-    device: Option<&'static Device>,
+    last_inpaint: Option<Key>,
 }
 
 impl Models {
@@ -148,6 +147,7 @@ impl Models {
     pub(crate) fn get<M, F>(
         &mut self,
         key: &Key,
+        backend: Runtime,
         load: impl FnOnce(&'static Device) -> F,
     ) -> Result<&M>
     where
@@ -160,14 +160,13 @@ impl Models {
             // shutdown, and Tokio panics on a timer polled after, as a
             // download waiting to retry polls one.
             let shutdown = &self.shutdown;
-            let (model, device) = self.runtime.block_on(async {
+            let model = self.runtime.block_on(async {
                 tokio::select! {
                     biased;
                     () = shutdown.cancelled() => Err(Error::Shutdown),
-                    loaded = loaded(key, load) => loaded,
+                    loaded = loaded(key, backend, load) => loaded,
                 }
             })?;
-            self.device = Some(device);
             self.loaded.insert(key.clone(), Box::new(model));
         }
         // libtorch reads some choices from the thread's current device, not
@@ -177,13 +176,16 @@ impl Models {
         // GPU AOTriton doesn't cover (koharu-rs/koharu#1408). Every call makes
         // it current, as ggml, which stable-diffusion.cpp runs here on, sets
         // it too.
-        if let Some(device) = self.device
+        if let Some(device) = koharu_runtime::torch_device()
             && Cuda::device_count() > 0
         {
             Cuda::set_device(device.index as i64).map_err(|source| Error::Stage {
                 stage: key.stage,
                 source: source.into(),
             })?;
+        }
+        if key.stage == Stage::Inpaint {
+            self.last_inpaint = Some(key.clone());
         }
         Ok(self.loaded[key]
             .downcast_ref()
@@ -194,18 +196,52 @@ impl Models {
     /// back to the device: libtorch's cache keeps it otherwise, and the
     /// device counts it as used (koharu-rs/koharu#1484).
     pub(crate) fn retain(&mut self, wanted: &HashSet<Key>) {
+        self.retain_where(|key| wanted.contains(key));
+    }
+
+    /// Retain the most recently used manual inpainter on idle, even when it
+    /// differs from the pipeline preference. Other unused inpainters leave.
+    pub(crate) fn retain_idle(&mut self, mut wanted: HashSet<Key>, active: &HashSet<Key>) {
+        if let Some(key) = self.last_inpaint.clone() {
+            wanted.retain(|key| key.stage != Stage::Inpaint || active.contains(key));
+            wanted.insert(key);
+        }
+        self.retain(&wanted);
+    }
+
+    pub(crate) fn retain_where(&mut self, keep: impl Fn(&Key) -> bool) {
         let loaded = self.loaded.len();
-        self.loaded.retain(|key, _| wanted.contains(key));
+        self.loaded.retain(|key, _| keep(key));
+        if self
+            .last_inpaint
+            .as_ref()
+            .is_some_and(|key| !self.loaded.contains_key(key))
+        {
+            self.last_inpaint = None;
+        }
         if self.loaded.len() < loaded {
+            tracing::info!(
+                unloaded = loaded - self.loaded.len(),
+                remaining = self.loaded.len(),
+                "models released"
+            );
             self.empty_cache();
         }
+    }
+
+    pub(crate) fn unload(&mut self) {
+        let count = self.loaded.len();
+        self.loaded.clear();
+        self.last_inpaint = None;
+        self.empty_cache();
+        tracing::info!(unloaded = count, "all pipeline models released");
     }
 
     /// Empties libtorch's cache. It's left until a model has loaded on the
     /// device: before, the runtime hasn't loaded libtorch, as a project
     /// opening stops what isn't running.
     fn empty_cache(&self) {
-        if self.device.is_some()
+        if koharu_runtime::is_loaded(Runtime::Torch)
             && Cuda::device_count() > 0
             && let Err(error) = Cuda::empty_cache()
         {
@@ -220,29 +256,30 @@ impl Models {
 /// which fit themselves to free memory, wouldn't see it as free.
 async fn loaded<M, F>(
     key: &Key,
+    backend: Runtime,
     load: impl FnOnce(&'static Device) -> F,
-) -> Result<(M, &'static Device)>
+) -> Result<M>
 where
     F: Future<Output = anyhow::Result<M>>,
 {
-    let device = koharu_runtime::device()
+    let device = koharu_runtime::device(backend)
         .await
         .map_err(|source| Error::Load {
             model: key.name.clone(),
             device: "no device".to_owned(),
-            free: ByteSize(0),
+            free: "unknown".to_owned(),
             reserved: ByteSize(0),
             active: ByteSize(0),
             source,
         })?;
-    let cuda = Cuda::device_count() > 0;
+    let cuda = koharu_runtime::is_loaded(Runtime::Torch) && Cuda::device_count() > 0;
     if cuda {
         Cuda::empty_cache().map_err(|source| failure(key, device, cuda, source.into()))?;
     }
     let model = load(device)
         .await
         .map_err(|source| failure(key, device, cuda, source))?;
-    Ok((model, device))
+    Ok(model)
 }
 
 /// The load failure, with the memory free on `device` and libtorch's.
@@ -253,7 +290,10 @@ fn failure(key: &Key, device: &Device, cuda: bool, source: anyhow::Error) -> Err
     Error::Load {
         model: key.name.clone(),
         device: device.description.clone(),
-        free: ByteSize(device.memory().free),
+        free: device.memory().map_or_else(
+            || "unknown".to_owned(),
+            |memory| ByteSize(memory.free).to_string(),
+        ),
         reserved: ByteSize(held.map_or(0, |held| held.reserved)),
         active: ByteSize(held.map_or(0, |held| held.active)),
         source,

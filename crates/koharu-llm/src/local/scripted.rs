@@ -52,7 +52,7 @@ pub(crate) fn scripted_kind(
     let prompts = Arc::new(Mutex::new(Vec::new()));
     let (jobs, queue) = mpsc::channel::<Job>();
     let heard = Arc::clone(&prompts);
-    std::thread::spawn(move || {
+    let worker = std::thread::spawn(move || {
         let mut replies = replies.into_iter();
         while let Ok(job) = queue.recv() {
             heard
@@ -85,7 +85,7 @@ pub(crate) fn scripted_kind(
         facts: ModelFacts::new(spec("scripted", markup, kind).with_context_window(window)),
     };
     Scripted {
-        model: RigModel::new(wire, Queue(jobs)).erase(),
+        model: RigModel::new(wire, Queue::new(jobs, worker)).erase(),
         prompts,
     }
 }

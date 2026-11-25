@@ -60,7 +60,11 @@ pub(super) fn area(member: &Member, area: &Area, raster: Option<LayerId>) -> Res
         image,
         mask,
         regions: vec![Region { rect, panel: None }],
-        target: Target::Area { rect, mask: limit, raster },
+        target: Target::Area {
+            rect,
+            mask: limit,
+            raster,
+        },
         windows: Vec::new(),
     }))
 }

@@ -52,14 +52,29 @@ pub fn stop_pipeline(app: State<'_, Arc<App>>) {
     app.pipeline.stop();
 }
 
-/// Unloads every model the pipeline loaded once the GPU's current call ends,
-/// freeing its memory as Photoshop's Edit → Purge frees memory; each loads
-/// again when a stage next needs it.
+/// Stops the pipeline and waits until its models are released. Each loads
+/// again only when a later stage needs it.
 #[tauri::command]
 #[specta::specta]
-pub fn unload(app: State<'_, Arc<App>>) {
+pub async fn unload(app: State<'_, Arc<App>>) -> Result<()> {
     tracing::info!("unload");
-    app.pipeline.unload();
+    let (agent_run, conversation) = {
+        let mut project = app.project.lock();
+        match project.as_mut() {
+            Some(project) => (project.run.take(), project.conversation.take()),
+            None => (None, None),
+        }
+    };
+    if let Some((_, task)) = agent_run {
+        task.abort();
+        let _ = task.await;
+    }
+    // A final local model handle can join its native worker; do not block
+    // the async runtime while destroying the agent conversation.
+    tokio::task::spawn_blocking(move || drop(conversation)).await?;
+    app.pipeline.unload().await?;
+    tracing::info!("pipeline models unloaded");
+    Ok(())
 }
 
 /// What every run told so far, for an interface that loaded late.

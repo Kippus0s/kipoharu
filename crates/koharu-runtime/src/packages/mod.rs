@@ -26,7 +26,7 @@ use self::{
     host::Host,
     release::Release,
 };
-use crate::{Backend, Device, store};
+use crate::{Backend, Device, Runtime, store};
 
 /// A native package a GPU needs. Its folder in the store follows from the host
 /// and the GPU, so `load` finds what `download` put there.
@@ -43,9 +43,8 @@ trait Package: Send + Sync {
     fn versions(&self) -> Vec<PathBuf>;
 }
 
-/// The packages a GPU with `backend` needs, in dependency order: CUDA or ROCm,
-/// libtorch, llama.cpp, then stable-diffusion.cpp.
-fn packages(backend: Backend) -> Vec<Box<dyn Package>> {
+/// Shared GPU dependencies, initialized once before any model backend.
+fn drivers(backend: Backend) -> Vec<Box<dyn Package>> {
     let mut packages: Vec<Box<dyn Package>> = Vec::new();
     match backend {
         #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -57,9 +56,6 @@ fn packages(backend: Backend) -> Vec<Box<dyn Package>> {
         Backend::Rocm { target } => packages.push(Box::new(rocm::Rocm { target })),
         _ => {}
     }
-    packages.push(Box::new(torch::Torch));
-    packages.push(Box::new(ggml::Llama));
-    packages.push(Box::new(ggml::Diffusion));
     packages
 }
 
@@ -67,9 +63,21 @@ fn packages(backend: Backend) -> Vec<Box<dyn Package>> {
 /// loads, so a transfer that fails leaves nothing loaded. Old versions go in
 /// the background, so models don't wait for them. Returns `gpu` as its packages
 /// see it.
-pub(crate) async fn start(gpu: &Device) -> Result<Device> {
+pub(crate) async fn start_driver(gpu: &Device) -> Result<Device> {
+    start(gpu, drivers(gpu.backend)).await
+}
+
+pub(crate) async fn start_runtime(gpu: &Device, runtime: Runtime) -> Result<Device> {
+    let package: Box<dyn Package> = match runtime {
+        Runtime::Torch => Box::new(torch::Torch),
+        Runtime::Llama => Box::new(ggml::Llama),
+        Runtime::Diffusion => Box::new(ggml::Diffusion),
+    };
+    start(gpu, vec![package]).await
+}
+
+async fn start(gpu: &Device, packages: Vec<Box<dyn Package>>) -> Result<Device> {
     let host = Host::current()?;
-    let packages = packages(gpu.backend);
     for package in &packages {
         package.download(host, gpu.backend).await?;
     }

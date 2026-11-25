@@ -95,7 +95,7 @@ impl Typing {
                 "y" => {
                     self.redo()?;
                     taken
-                },
+                }
                 _ => Keyed::Pass,
             },
             // Alt alone opens a menu by its letter.

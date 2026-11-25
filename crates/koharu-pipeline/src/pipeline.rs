@@ -8,7 +8,7 @@ use std::{
 
 use koharu_scene::{ProjectId, Session};
 use parking_lot::{Mutex, RwLock};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 
 use crate::{
     Error, Event, PipelineConfig, Request, Result, RunId,
@@ -102,10 +102,11 @@ impl Pipeline {
         self.send(Command::Stop);
     }
 
-    /// Unloads every model once the GPU's current work ends, as ComfyUI's
-    /// Unload Models does.
-    pub fn unload(&self) {
-        self.send(Command::Unload);
+    /// Stops queued work, waits for in-flight tasks, and unloads every model.
+    pub async fn unload(&self) -> Result<()> {
+        let (done, finished) = oneshot::channel();
+        self.send(Command::Unload(done));
+        finished.await.map_err(|_| Error::Shutdown)
     }
 
     /// Forgets the translation conversation of a project that closed.
@@ -165,6 +166,17 @@ mod tests {
                 .await
                 .expect("a history");
             assert_eq!(history.last(), Some(&ended));
+        }
+    }
+
+    #[tokio::test]
+    async fn unloading_an_unused_pipeline_is_repeatable() {
+        let pipeline = Pipeline::new(PipelineConfig::default());
+        for _ in 0..2 {
+            tokio::time::timeout(Duration::from_secs(5), pipeline.unload())
+                .await
+                .expect("the unload barrier completes")
+                .expect("unload succeeds without a model");
         }
     }
 

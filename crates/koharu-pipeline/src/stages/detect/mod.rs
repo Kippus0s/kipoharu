@@ -69,7 +69,9 @@ pub(crate) async fn detect(task: &Task, config: &PipelineConfig) -> anyhow::Resu
     };
     let (scan, detected) = task
         .inference(&[member], move |models| {
-            let detector = models.get(&key, |device| model::load(config.model, device))?;
+            let detector = models.get(&key, koharu_runtime::Runtime::Torch, |device| {
+                model::load(config.model, device)
+            })?;
             let detected = detector.inference(&scan, &options)?;
             Ok((scan, detected))
         })

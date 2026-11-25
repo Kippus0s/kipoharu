@@ -100,7 +100,12 @@ impl Plan {
                     area: None,
                 }
             }
-            Target::Area { page, area, prompt, raster } => {
+            Target::Area {
+                page,
+                area,
+                prompt,
+                raster,
+            } => {
                 if stages.iter().ne([Stage::Inpaint].iter()) {
                     return Err(Error::invalid("an area takes inpainting only"));
                 }

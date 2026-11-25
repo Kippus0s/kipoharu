@@ -216,7 +216,9 @@ impl App {
         tracing::info!(label = %edit.label, ops = edit.ops.len(), "edit");
         let session = self.session()?;
         let mut session = session.lock();
-        let edit = self.renderer.prepare_manual_text_edit(&session.project(), edit)?;
+        let edit = self
+            .renderer
+            .prepare_manual_text_edit(&session.project(), edit)?;
         Ok(session.apply(edit)?)
     }
 
@@ -255,14 +257,17 @@ impl App {
                     }
                     // The Remove tool creates this labelled raster asynchronously. Select
                     // it only once the edit has succeeded and the canvas has its new page.
-                    let created = told.iter().rev().flat_map(|change| &change.created).find_map(|made| {
-                        match made {
-                            Created::Layer { id, label: Some(label) } if label == "inpainted" => {
-                                Some(*id)
-                            }
+                    let created = told
+                        .iter()
+                        .rev()
+                        .flat_map(|change| &change.created)
+                        .find_map(|made| match made {
+                            Created::Layer {
+                                id,
+                                label: Some(label),
+                            } if label == "inpainted" => Some(*id),
                             _ => None,
-                        }
-                    });
+                        });
                     for change in told {
                         showing.emit(events::CHANGE, change);
                     }
@@ -270,12 +275,18 @@ impl App {
                     if let Some(layer) = created.filter(|_| result.is_ok()) {
                         let on_page = showing.project.lock().as_ref().is_some_and(|project| {
                             project.page.is_some_and(|page| {
-                                project.session.lock().project().parent(layer)
+                                project
+                                    .session
+                                    .lock()
+                                    .project()
+                                    .parent(layer)
                                     .is_ok_and(|(owner, _)| owner.id == page)
                             })
                         });
                         if on_page {
-                            showing.screen.select_and_notify(Arc::clone(&showing), vec![layer]);
+                            showing
+                                .screen
+                                .select_and_notify(Arc::clone(&showing), vec![layer]);
                         }
                     }
                     result
@@ -372,7 +383,12 @@ impl App {
                     .and_then(|mut clipboard| clipboard.get_text())
                     .map(|text| self.screen.insert(text.replace("\r\n", "\n")))
                     .context("the clipboard has no text"),
-                Effect::Inpaint { page, rect, mask, raster } => self
+                Effect::Inpaint {
+                    page,
+                    rect,
+                    mask,
+                    raster,
+                } => self
                     .process(
                         Target::Area {
                             page,
