@@ -16,6 +16,7 @@ use crate::{
     text::{self, Lettering, ResolvedText},
 };
 
+mod manual_text;
 mod retained;
 
 /// The process's renderer, with the default preference until the app sets

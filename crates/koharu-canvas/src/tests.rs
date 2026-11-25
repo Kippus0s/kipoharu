@@ -306,11 +306,12 @@ fn apply(fixture: &mut Fixture, effects: Vec<Effect>) -> Vec<String> {
     for effect in effects {
         if let Effect::Edit(edit) = effect {
             labels.push(edit.label.clone());
-            fixture
-                .session
-                .lock()
-                .apply(edit)
-                .expect("the edit applies");
+            {
+                let mut session = fixture.session.lock();
+                let edit = fixture.renderer.prepare_manual_text_edit(&session.project(), edit)
+                    .expect("prepare manual text edit");
+                session.apply(edit).expect("the edit applies");
+            }
             fixture.render();
         }
     }
@@ -1075,47 +1076,129 @@ fn alt_wheel_sizes_selected_text_with_each_type_bar_tool() {
     }
 }
 
-#[test]
-fn alt_wheel_sizes_a_selected_block_translation() {
-    let Some(mut fixture) = unscaled(vec![
-        json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {
-            "kind": "block", "source": {"content": "やあ"}, "translation": {
-                "content": "Hi", "style": {"chars": {"size": 40}},
-                "frame": {"box": {"bounds": {"x": 0, "y": 0, "width": 100, "height": 60}, "fit": "best"}},
-            },
-        }}),
-    ]) else {
-        return;
+/// The actual font size, in the text's coordinates, as the renderer laid it out.
+fn rendered_size(fixture: &Fixture, id: LayerId) -> f64 {
+    let project = fixture.session.lock().project();
+    let layer = project.layer(id).expect("layer");
+    let text = match &layer.content {
+        koharu_scene::Content::Text(text) => text.as_ref(),
+        koharu_scene::Content::Block(block) => block.translation.as_ref().expect("translation"),
+        _ => panic!("text layer"),
     };
-    let block = layers(&fixture)[0];
-    fixture.canvas.set_tool(Tool::Select);
-    fixture.canvas.select(vec![block]);
-    let before = fixture.canvas.camera();
-    let effects = fixture
-        .canvas
-        .input(scroll(
-            (200.0, 200.0),
-            ScrollDelta::LineDelta(0.0, -1.0),
-            Modifiers::ALT,
-        ))
-        .expect("input");
-    assert_eq!(apply(&mut fixture, effects), ["set_style"]);
-    let translation = &layer(&fixture, block)["translation"];
-    assert_eq!(translation["style"]["chars"]["size"], json!(41.0));
-    assert_eq!(translation["frame"]["box"]["fit"], json!("best"));
-    assert_eq!(fixture.canvas.camera(), before);
+    fixture.renderer.layout(id, text).expect("layout").expect("text").effective_size(text)
 }
 
 #[test]
-fn alt_wheel_preserves_all_non_proportional_fit_modes() {
+fn alt_wheel_transitions_best_fit_from_rendered_size() {
+    let Some(mut fixture) = unscaled(vec![
+        json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {
+            "kind": "block", "source": {"content": "やあ"}, "translation": {
+                "content": "Hi", "style": {"chars": {"size": 12}},
+                "frame": {"box": {"bounds": {"x": 0, "y": 0, "width": 100, "height": 60}, "fit": "best"}},
+            },
+        }}),
+        json!({"op": "add_layer", "page": "$page", "index": 1, "layer": {
+            "kind": "block", "source": {"content": "original"}, "translation": {
+                "content": "Hi", "style": {"chars": {"size": 120}},
+                "frame": {"path": {"path": "M200 100H280V140H200Z", "fit": "best"}}
+            },
+        }}),
+    ]) else { return; };
+    let ids = layers(&fixture);
+    fixture.canvas.set_tool(Tool::Select);
+    fixture.canvas.select(ids.clone());
+    let old: Vec<_> = ids.iter().map(|id| layer(&fixture, *id)).collect();
+    let sizes: Vec<_> = ids.iter().map(|id| rendered_size(&fixture, *id)).collect();
+    assert!((sizes[0] - 12.0).abs() > 1.0);
+    assert!((sizes[1] - 120.0).abs() > 1.0);
+    let camera = fixture.canvas.camera();
+    let effects = fixture.canvas.input(scroll((200.0, 200.0),
+        ScrollDelta::LineDelta(0.0, -1.0), Modifiers::ALT)).expect("input");
+    assert_eq!(apply(&mut fixture, effects), ["set_style"]);
+    for (i, id) in ids.iter().enumerate() {
+        let new = layer(&fixture, *id);
+        assert_eq!(new["source"], old[i]["source"]);
+        assert_eq!(new["mask"], old[i]["mask"]);
+        let text = &new["translation"];
+        let size = text["style"]["chars"]["size"].as_f64().expect("size");
+        assert!(near(size, sizes[i] + 1.0));
+        let ratio = size / sizes[i];
+        if i == 0 {
+            let frame = &text["frame"]["box"];
+            assert_eq!(frame["fit"], "proportional");
+            assert!(near(frame["bounds"]["width"].as_f64().unwrap(), 100.0 * ratio));
+        } else {
+            let frame = &text["frame"]["path"];
+            assert_eq!(frame["fit"], "proportional");
+            let path = BezPath::from_svg(frame["path"].as_str().unwrap()).unwrap();
+            assert!((path.bounding_box().width() - 80.0 * ratio).abs() < 1e-6);
+        }
+    }
+    assert_eq!(fixture.canvas.camera(), camera);
+    fixture.session.lock().undo().expect("undo");
+    fixture.render();
+    for (id, before) in ids.iter().zip(&old) {
+        assert_eq!(&layer(&fixture, *id), before);
+    }
+}
+
+#[test]
+fn manual_best_to_proportional_keeps_frame_then_size_edit_scales_it() {
+    let Some(mut fixture) = unscaled(vec![
+        json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {
+            "kind": "text", "content": "Hi", "style": {"chars": {"size": 12}},
+            "frame": {"box": {"bounds": {"x": 10, "y": 20, "width": 100, "height": 60}, "fit": "best"}}
+        }}),
+        json!({"op": "add_layer", "page": "$page", "index": 1, "layer": {
+            "kind": "block", "source": {"content": "original"}, "translation": {
+                "content": "Hi", "style": {"chars": {"size": 120}},
+                "frame": {"path": {"path": "M200 100H280V140H200Z", "fit": "best"}}
+            }
+        }}),
+    ]) else { return; };
+    let ids = layers(&fixture);
+    let old: Vec<_> = ids.iter().map(|id| layer(&fixture, *id)).collect();
+    let sizes: Vec<_> = ids.iter().map(|id| rendered_size(&fixture, *id)).collect();
+    let fit_ops = vec![
+        Op::UpdateLayer { layer: ids[0].into(), patch: json!({"frame": {"box": {"fit": "proportional"}}}) },
+        Op::UpdateLayer { layer: ids[1].into(), patch: json!({"translation": {"frame": {"path": {"fit": "proportional"}}}}) },
+    ];
+    assert_eq!(apply(&mut fixture, vec![Effect::Edit(Edit { label: "update_layer".into(), ops: fit_ops })]), ["update_layer"]);
+    let boxed = layer(&fixture, ids[0]);
+    let block = layer(&fixture, ids[1]);
+    assert_eq!(boxed["frame"]["box"]["bounds"], old[0]["frame"]["box"]["bounds"]);
+    assert_eq!(block["translation"]["frame"]["path"]["path"], old[1]["translation"]["frame"]["path"]["path"]);
+    assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
+    assert_eq!(block["translation"]["frame"]["path"]["fit"], "proportional");
+    assert!(near(boxed["style"]["chars"]["size"].as_f64().unwrap(), sizes[0]));
+    assert!(near(block["translation"]["style"]["chars"]["size"].as_f64().unwrap(), sizes[1]));
+    fixture.session.lock().undo().expect("undo");
+    fixture.render();
+    // A TypeBar absolute size request on the original Best Fit selection.
+    let size_ops = vec![
+        Op::UpdateLayer { layer: ids[0].into(), patch: json!({"style": {"chars": {"size": 36}}}) },
+        Op::UpdateLayer { layer: ids[1].into(), patch: json!({"translation": {"style": {"chars": {"size": 36}}}}) },
+    ];
+    assert_eq!(apply(&mut fixture, vec![Effect::Edit(Edit { label: "set_style".into(), ops: size_ops })]), ["set_style"]);
+    let boxed = layer(&fixture, ids[0]);
+    let block = layer(&fixture, ids[1]);
+    assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
+    assert_eq!(block["translation"]["frame"]["path"]["fit"], "proportional");
+    assert!(near(boxed["frame"]["box"]["bounds"]["width"].as_f64().unwrap(), 100.0 * 36.0 / sizes[0]));
+    let path = BezPath::from_svg(block["translation"]["frame"]["path"]["path"].as_str().unwrap()).unwrap();
+    assert!((path.bounding_box().width() - 80.0 * 36.0 / sizes[1]).abs() < 1e-6);
+}
+
+#[test]
+fn alt_wheel_preserves_fixed_shrink_and_grow_modes() {
     let mut ops = Vec::new();
-    for fit in ["none", "shrink", "best", "grow"] {
+    for fit in ["none", "shrink", "grow"] {
         ops.push(json!({"op": "add_layer", "page": "$page", "index": ops.len(), "layer": {
             "kind": "text", "content": "Hi", "style": {"chars": {"size": 40}},
             "frame": {"box": {"bounds": {"x": 100, "y": 100, "width": 80, "height": 40}, "fit": fit}}
         }}));
     }
-    for fit in ["none", "shrink", "best"] {
+    for fit in ["none", "shrink"] {
         ops.push(json!({"op": "add_layer", "page": "$page", "index": ops.len(), "layer": {
             "kind": "block", "source": {"content": "original"}, "translation": {
                 "content": "Hi", "style": {"chars": {"size": 40}},

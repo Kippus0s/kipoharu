@@ -124,8 +124,8 @@ export function setStyle(layers: Layer[], style: TextStyle): Promise<Change> {
 }
 
 /** Sets the fit of each layer's own frame, a box or a path: a text's, or a block's translation's.
- * Point text and a block with no translation have no frame to fit. Only explicit fit choices
- * call this helper; changing a font size never changes the fit. */
+ * Point text and a block with no translation have no frame to fit. The host also transitions
+ * Best Fit to Proportional on manual layer-wide size edits, using its rendered size. */
 export function setFit(layers: Layer[], fit: PathFit): Promise<Change> {
   return edit(
     'update_layer',

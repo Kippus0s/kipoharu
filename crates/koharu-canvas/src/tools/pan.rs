@@ -93,12 +93,21 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
                     },
                     _ => return Vec::new(),
                 };
-                let old = text.style.chars.size.unwrap_or(24.0);
+                // Best Fit is rendered at a calculated size. Start from the
+                // layout on screen; the host normalizes it before applying this edit.
+                let old = if text.is_best_fit() {
+                    let frame = cx.snapshot.frame();
+                    let drawn = if translation { frame.translation(*id) } else { frame.layer(*id) };
+                    drawn.and_then(|drawn| drawn.text())
+                        .map_or_else(|| text.style.chars.size.unwrap_or(24.0), |laid| laid.effective_size(text))
+                } else {
+                    text.style.chars.size.unwrap_or(24.0)
+                };
                 let size = (old + step).clamp(0.5, 1296.0);
                 if size == old {
                     return Vec::new();
                 }
-                // Preserve the chosen fit; the scene scales proportional frames on size edits.
+                // The host converts Best Fit to Proportional; the scene scales proportional frames.
                 let mut patch = json!({"style": {"chars": {"size": size}}});
                 if translation {
                     patch = json!({"translation": patch});

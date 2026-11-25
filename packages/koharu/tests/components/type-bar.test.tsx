@@ -77,7 +77,7 @@ const translated = (layer: string, frame: 'box' | 'path', fit: string): Op => ({
 
 describe('type bar font size', () => {
   it.each(['none', 'best', 'shrink', 'proportional'] as const)(
-    'preserves %s fitting when setting a size on boxes and paths',
+    'sends a size-only edit for %s boxes and paths (host resolves Best Fit)',
     async (fit) => {
       const edits = await chooseSize(fit, '36')
       await waitFor(() => expect(edits('set_style')).toHaveLength(1))
@@ -90,7 +90,7 @@ describe('type bar font size', () => {
     },
   )
 
-  it('preserves every mode in a mixed proportional and Best Fit selection', async () => {
+  it('sends a single size edit for a mixed proportional and Best Fit selection', async () => {
     const edits = await chooseSize('proportional', '36', 'best')
     await waitFor(() => expect(edits('set_style')).toHaveLength(1))
     expect(edits()).toEqual([])

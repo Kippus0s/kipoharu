@@ -240,6 +240,13 @@ pub struct Text {
 }
 
 impl Text {
+    /// Whether the layout chooses the size instead of drawing at the set size.
+    #[must_use]
+    pub fn is_best_fit(&self) -> bool {
+        matches!(&self.frame, Frame::Box { fit: Fit::Best, .. }
+            | Frame::Path { fit: PathFit::Best, .. })
+    }
+
     /// Scale only the text frame, not its transform or its containing block.
     /// Both the TypeBar and the canvas wheel write the base character size.
     pub(crate) fn scale_proportional_frame(&mut self, before: &Self) -> Result<(), String> {

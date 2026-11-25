@@ -68,6 +68,21 @@ pub struct ResolvedText {
     pub uncovered: Vec<char>,
 }
 
+impl ResolvedText {
+    /// The rendered font size of uniformly sized text; for mixed sizes, the
+    /// rendered equivalent of its base style. Fitting acts in local coordinates.
+    #[must_use]
+    pub fn effective_size(&self, text: &Text) -> f64 {
+        let uniform = self.runs.first().filter(|first| {
+            self.runs.iter().all(|run| run.size == first.size)
+        });
+        uniform.map_or_else(
+            || text.style.chars.size.unwrap_or(24.0) * f64::from(self.scale),
+            |run| f64::from(run.size),
+        )
+    }
+}
+
 /// `text` laid out, each span set in the chain `fonts` gives for its
 /// style and characters; `None` when it has no characters.
 pub(crate) fn layout(

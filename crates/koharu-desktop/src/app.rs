@@ -214,7 +214,10 @@ impl App {
     /// Runs `edit` on the open project as one undo step.
     pub fn edit(&self, edit: Edit) -> Result<Change> {
         tracing::info!(label = %edit.label, ops = edit.ops.len(), "edit");
-        Ok(self.session()?.lock().apply(edit)?)
+        let session = self.session()?;
+        let mut session = session.lock();
+        let edit = self.renderer.prepare_manual_text_edit(&session.project(), edit)?;
+        Ok(session.apply(edit)?)
     }
 
     /// Tells the interface `session`'s changes, and shows them on the canvas
