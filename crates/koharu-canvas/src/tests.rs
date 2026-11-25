@@ -612,6 +612,47 @@ fn a_stroke_paints_a_new_raster_where_it_ran() {
 }
 
 #[test]
+fn fine_ink_preview_matches_the_committed_raster() {
+    for existing in [false, true] {
+        let ops = if existing { offset_raster() } else { Vec::new() };
+        let Some(mut fixture) = unscaled_of((100, 100), ops) else {
+            return;
+        };
+        if existing {
+            let raster = layers(&fixture)[0];
+            fixture.canvas.select(vec![raster]);
+        }
+        fixture.canvas.set_tool(Tool::Draw);
+        fixture.canvas.set_brush(brush(1.0, [0.0, 0.0, 0.0, 0.8]));
+        let end = (55.0, 53.25);
+        fixture.canvas.input(down((45.0, 49.25), Modifiers::default())).expect("press");
+        fixture.canvas.input(drag(1, (48.0, 48.75))).expect("drag");
+        fixture.canvas.input(drag(1, (51.0, 50.25))).expect("drag");
+        fixture.canvas.input(drag(1, end)).expect("drag");
+        fixture.canvas.draw().expect("preview");
+        let before = fixture.canvas.snapshot().expect("preview pixels");
+        let effects = fixture.canvas.input(up(1, end)).expect("release");
+        assert_eq!(apply(&mut fixture, effects), ["paint"]);
+        // Keep editor selection handles out of the comparison for a new raster.
+        if !existing {
+            fixture.canvas.select(Vec::new());
+        }
+        fixture.canvas.draw().expect("committed draw");
+        let after = fixture.canvas.snapshot().expect("committed pixels");
+        // Away from the pointer ring and existing layer boundary.
+        let mut inked = false;
+        for y in 45..54 {
+            for x in 44..52 {
+                let pixel = before.get_pixel(x, y);
+                inked |= pixel[0] < 230;
+                assert_eq!(pixel, after.get_pixel(x, y), "{existing}: {x}, {y}");
+            }
+        }
+        assert!(inked, "the comparison must contain actual ink");
+    }
+}
+
+#[test]
 fn a_new_raster_stays_under_top_text_without_reordering_lower_text() {
     let Some(mut fixture) = unscaled_of(
         (100, 100),

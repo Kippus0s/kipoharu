@@ -9,9 +9,27 @@ use ui_events::ScrollDelta;
 use super::command;
 use crate::{Effect, Tool, gesture::Context, view::Sample};
 
-/// How far Alt and a notch of the wheel change the brush, in page pixels,
-/// as the editor's did.
-const BRUSH_STEP: f64 = 4.0;
+/// Small brushes need finer wheel steps, especially below one page pixel.
+const MIN_BRUSH_DIAMETER: f64 = 0.1;
+
+fn stepped_brush(diameter: f64, grow: bool, max: f64) -> f64 {
+    let d = diameter.clamp(MIN_BRUSH_DIAMETER, max.max(MIN_BRUSH_DIAMETER));
+    let bands = [(2.0, 0.1), (5.0, 0.5), (16.0, 1.0), (f64::INFINITY, 4.0)];
+    let mut lower = MIN_BRUSH_DIAMETER;
+    for (upper, step) in bands {
+        if (grow && d < upper) || (!grow && d <= upper) {
+            let next = if grow {
+                (d + step).min(upper)
+            } else {
+                (d - step).max(lower)
+            };
+            return ((next * 10.0).round() / 10.0)
+                .clamp(MIN_BRUSH_DIAMETER, max.max(MIN_BRUSH_DIAMETER));
+        }
+        lower = upper;
+    }
+    d
+}
 
 /// A wheel notch changes selected lettering by one point.
 const TEXT_STEP: f64 = 1.0;
@@ -61,12 +79,11 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
             return Vec::new();
         }
         let size = cx.snapshot.size();
-        let step = if delta.y < 0.0 {
-            BRUSH_STEP
-        } else {
-            -BRUSH_STEP
-        };
-        let diameter = (cx.brush.diameter + step).clamp(1.0, size.width.max(size.height).max(1.0));
+        let diameter = stepped_brush(
+            cx.brush.diameter,
+            delta.y < 0.0,
+            size.width.max(size.height),
+        );
         return vec![Effect::BrushDiameter(diameter)];
     }
     if modifiers.alt()
@@ -173,4 +190,30 @@ pub(crate) fn pinch(cx: &Context, sample: Sample, delta: f32) -> Vec<Effect> {
     vec![Effect::Camera(
         cx.view.zoomed(sample.screen, 1.0 + f64::from(delta)),
     )]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stepped_brush;
+
+    #[test]
+    fn brush_wheel_resolves_small_sizes_and_band_boundaries() {
+        for (size, grow, expected) in [
+            (0.1, false, 0.1),
+            (0.1, true, 0.2),
+            (1.0, false, 0.9),
+            (1.9, true, 2.0),
+            (2.0, false, 1.9),
+            (2.0, true, 2.5),
+            (5.0, false, 4.5),
+            (5.0, true, 6.0),
+            (16.0, false, 15.0),
+            (16.0, true, 20.0),
+            (17.0, false, 16.0),
+            (20.0, false, 16.0),
+            (99.0, true, 100.0),
+        ] {
+            assert_eq!(stepped_brush(size, grow, 100.0), expected);
+        }
+    }
 }

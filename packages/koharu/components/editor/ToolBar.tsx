@@ -132,7 +132,7 @@ export function ToolBar() {
 
 function BrushSize({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const { t } = useTranslation()
-  const roundedValue = Math.round(value)
+  const roundedValue = Math.round(value * 10) / 10
   const page = usePage().data
   const maxSize = maxBrushDiameter(page?.size ?? { width: 2048, height: 2048 })
   // Photoshop's brush picker shows the tip over its size; the tip grows with the size, up to
@@ -171,7 +171,7 @@ function BrushSize({ value, onChange }: { value: number; onChange: (value: numbe
           <PopoverTitle className='text-[11px]'>{t('tools.brushSize')}</PopoverTitle>
           <NumberField
             min={MIN_BRUSH_DIAMETER}
-            step={1}
+            step={0.1}
             value={roundedValue}
             className='w-20'
             onValueChange={(next) => {
@@ -193,8 +193,8 @@ function BrushSize({ value, onChange }: { value: number; onChange: (value: numbe
           aria-label={t('tools.brushSize')}
           min={MIN_BRUSH_DIAMETER}
           max={maxSize}
-          step={1}
-          value={value}
+          step={0.1}
+          value={roundedValue}
           className='py-1 [&_[data-slot=slider-thumb]]:size-2.5'
           onValueChange={onChange}
         />

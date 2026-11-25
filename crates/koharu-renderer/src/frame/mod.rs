@@ -259,6 +259,88 @@ impl Frame {
         }))
     }
 
+    /// A transient raster write, in the same layer tree and pixel sampling
+    /// pipeline as a committed write. No session or history is changed.
+    pub fn with_raster_preview(
+        &self,
+        layer: Option<LayerId>,
+        index: usize,
+        mut tiles: koharu_scene::Tiles,
+        rect: koharu_scene::Rect,
+        pixels: &[u8],
+    ) -> Result<Self> {
+        use std::collections::BTreeMap;
+        use koharu_scene::{PixelFormat, Tile};
+        anyhow::ensure!(tiles.format == PixelFormat::Rgba8, "ink preview needs RGBA tiles");
+        anyhow::ensure!(
+            rect.width > 0 && rect.height > 0
+                && u64::from(rect.width) * u64::from(rect.height) * 4 == pixels.len() as u64,
+            "ink preview pixels must cover the write rectangle",
+        );
+        const SIDE: i64 = Tile::SIZE as i64;
+        let mut positions: BTreeMap<_, _> = tiles
+            .tiles
+            .drain(..)
+            .map(|tile| ((tile.x, tile.y), tile))
+            .collect();
+        let (left, top) = (i64::from(rect.x), i64::from(rect.y));
+        let (right, bottom) = (left + i64::from(rect.width), top + i64::from(rect.height));
+        for ty in top.div_euclid(SIDE)..=(bottom - 1).div_euclid(SIDE) {
+            for tx in left.div_euclid(SIDE)..=(right - 1).div_euclid(SIDE) {
+                let tile = positions.entry((tx as i32, ty as i32)).or_insert_with(|| Tile {
+                    x: tx as i32,
+                    y: ty as i32,
+                    pixels: vec![0; (SIDE * SIDE * 4) as usize],
+                });
+                let (ox, oy) = (tx * SIDE, ty * SIDE);
+                let x0 = left.max(ox);
+                let count = ((right.min(ox + SIDE) - x0) * 4) as usize;
+                for y in top.max(oy)..bottom.min(oy + SIDE) {
+                    let src = ((y - top) * i64::from(rect.width) + x0 - left) as usize * 4;
+                    let dst = ((y - oy) * SIDE + x0 - ox) as usize * 4;
+                    tile.pixels[dst..dst + count].copy_from_slice(&pixels[src..src + count]);
+                }
+            }
+        }
+        tiles.tiles = positions
+            .into_values()
+            .filter(|tile| tile.pixels.chunks_exact(4).any(|p| p[3] != 0))
+            .collect();
+        let transform = Affine::translate(tiles.offset);
+        let content = crate::pixels::assemble(tiles)?
+            .map(|pixels| (Content::Pixels(Arc::new(pixels)), transform));
+        fn replace(nodes: &mut [Node], layer: LayerId, content: &Option<(Content, Affine)>) -> bool {
+            for node in nodes {
+                if node.layer == Some(layer) {
+                    node.content = content.clone();
+                    node.bounds = Node::new(node.layer, node.visible, content.clone()).bounds;
+                    return true;
+                }
+                if replace(&mut node.children, layer, content) {
+                    node.bounds = node
+                        .children
+                        .iter()
+                        .filter_map(|child| child.bounds)
+                        .reduce(|a, b| a.union(b));
+                    return true;
+                }
+            }
+            false
+        }
+        let mut nodes = self.0.nodes.clone();
+        if let Some(layer) = layer {
+            anyhow::ensure!(replace(&mut nodes, layer, &content), "ink preview layer is missing");
+        } else {
+            nodes.insert(index.min(nodes.len()), Node::new(None, true, content));
+        }
+        Ok(Self(Arc::new(FrameData {
+            page: self.0.page,
+            revision: self.0.revision.clone(),
+            area: self.0.area,
+            nodes,
+        })))
+    }
+
     /// A frame of this page drawing only `node` over `area`.
     fn with(&self, area: Rect, node: Node) -> Self {
         Self(Arc::new(FrameData {

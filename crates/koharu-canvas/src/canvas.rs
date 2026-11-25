@@ -13,7 +13,7 @@ use std::{
 use anyhow::Context as _;
 use cursor_icon::CursorIcon;
 use image::RgbaImage;
-use koharu_renderer::{Drawing, Gpu, Label, Renderer};
+use koharu_renderer::{Drawing, Frame, Gpu, Label, Renderer};
 use koharu_scene::{CharStyle, Content, Layer, LayerId, PageId, Rgba, Session, Text};
 use kurbo::{Affine, Point, Rect, Shape as _, Size, TranslateScale, Vec2};
 use parking_lot::Mutex;
@@ -790,10 +790,14 @@ impl Canvas {
         }
         let gpu = Gpu::get()?;
         let mut drawing = gpu.drawing(width as u16, height as u16);
+        let ink = match (&self.gesture, self.context()) {
+            (Some(active), Some(cx)) if !self.show_original => active.gesture.raster_preview(&cx)?,
+            _ => None,
+        };
         self.base(&mut drawing);
-        self.page(&mut drawing)?;
+        self.page(&mut drawing, ink.as_ref())?;
         if !self.show_original {
-            self.overlay(&mut drawing)?;
+            self.overlay(&mut drawing, ink.as_ref())?;
         }
         let target = match self.target.take() {
             Some(target) if sized => target,
@@ -861,7 +865,7 @@ impl Canvas {
     /// The overlay: Story's frames and numbers, the gesture's preview, then
     /// the selection's outlines and handles, following a drag, the hover,
     /// and the brush's ring.
-    fn overlay(&self, drawing: &mut Drawing) -> anyhow::Result<()> {
+    fn overlay(&self, drawing: &mut Drawing, ink: Option<&Frame>) -> anyhow::Result<()> {
         let mut overlay = Overlay::new(drawing, &self.view, self.colors);
         let Some(cx) = self.context() else {
             return Ok(());
@@ -881,7 +885,7 @@ impl Canvas {
             .single()
             .and_then(|id| cx.snapshot.part(id).map(|part| (id, part)));
         if let Some((id, part)) = part {
-            let frame = cx.snapshot.frame();
+            let frame = ink.unwrap_or(cx.snapshot.frame());
             let (tint, clear) = match part {
                 Part::Cleanup => (
                     Color::from_rgba8(128, 128, 128, 153),
@@ -1038,7 +1042,7 @@ impl Canvas {
     /// The page as the viewport shows it, without the layers a gesture
     /// lifts; while typing, without the text typed into, which draws as
     /// typed over its selection's highlight.
-    fn page(&self, drawing: &mut Drawing) -> anyhow::Result<()> {
+    fn page(&self, drawing: &mut Drawing, ink: Option<&Frame>) -> anyhow::Result<()> {
         let Some(snapshot) = &self.snapshot else {
             return Ok(());
         };
@@ -1061,6 +1065,7 @@ impl Canvas {
             .gesture
             .as_ref()
             .and_then(|active| active.gesture.under())
+            .or(ink)
             .or(typed.as_ref())
             .unwrap_or(snapshot.frame());
         frame.paint(self.view.to_screen(), self.view.size().to_rect(), drawing)?;

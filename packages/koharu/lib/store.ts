@@ -16,7 +16,7 @@ import type {
 } from '@koharu/ipc/protocol'
 
 export type CanvasTool = Tool
-export const MIN_BRUSH_DIAMETER = 1
+export const MIN_BRUSH_DIAMETER = 0.1
 export function maxBrushDiameter(size: Size): number {
   // Assume that for all sizes below 2048 width, 128 is sufficient.
   // For anything above, scale by percentage greater than 2048 width.

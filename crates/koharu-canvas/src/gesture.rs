@@ -124,6 +124,13 @@ impl Gesture {
         }
     }
 
+    pub fn raster_preview(&self, cx: &Context) -> anyhow::Result<Option<Frame>> {
+        match self {
+            Self::Stroke(stroke) => stroke.raster_preview(cx),
+            _ => Ok(None),
+        }
+    }
+
     pub fn preview(&self, cx: &Context, overlay: &mut Overlay) -> anyhow::Result<()> {
         match self {
             Self::Marquee(marquee) => marquee.preview(overlay),
