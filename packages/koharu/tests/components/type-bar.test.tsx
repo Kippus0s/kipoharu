@@ -13,8 +13,12 @@ const base = { visible: true, locked: false, opacity: 1, blend: 'normal', attrib
 
 /** Selects a balloon's translation in a path and one outside balloons in a box, both fitted by
  * `fit`, then a growing box, point text, and a block not translated yet, and picks `choice` in
- * the type bar's font size menu. Returns the frame edits it sent. */
-async function chooseSize(fit: 'none' | 'best', choice: string): Promise<() => Op[][]> {
+ * the type bar's font size menu. Returns the edits it sent, filtered by label. */
+async function chooseSize(
+  fit: 'none' | 'best' | 'shrink' | 'proportional',
+  choice: string,
+  signFit = fit,
+): Promise<(label?: string) => Op[][]> {
   const layers: Layer[] = [
     {
       ...base,
@@ -30,7 +34,7 @@ async function chooseSize(fit: 'none' | 'best', choice: string): Promise<() => O
       name: 'sign',
       kind: 'block',
       source: { content },
-      translation: { content, frame: { box: { bounds, fit } } },
+      translation: { content, frame: { box: { bounds, fit: signFit } } },
     },
     {
       ...base,
@@ -61,8 +65,8 @@ async function chooseSize(fit: 'none' | 'best', choice: string): Promise<() => O
   )
   fireEvent.click(screen.getByLabelText('Choose font size'))
   fireEvent.click(await screen.findByRole('menuitemradio', { name: choice }))
-  return () =>
-    edit.mock.calls.filter(([{ label }]) => label === 'update_layer').map(([{ ops }]) => ops)
+  return (kind = 'update_layer') =>
+    edit.mock.calls.filter(([{ label }]) => label === kind).map(([{ ops }]) => ops)
 }
 
 const translated = (layer: string, frame: 'box' | 'path', fit: string): Op => ({
@@ -72,13 +76,24 @@ const translated = (layer: string, frame: 'box' | 'path', fit: string): Op => ({
 })
 
 describe('type bar font size', () => {
-  it('stops each fitted frame, a box or a path, fitting a chosen size, in one step', async () => {
-    const frameEdits = await chooseSize('best', '24')
-    await waitFor(() =>
-      expect(frameEdits()).toEqual([
-        [translated('balloon', 'path', 'none'), translated('sign', 'box', 'none')],
-      ]),
-    )
+  it.each(['none', 'best', 'shrink', 'proportional'] as const)(
+    'preserves %s fitting when setting a size on boxes and paths',
+    async (fit) => {
+      const edits = await chooseSize(fit, '36')
+      await waitFor(() => expect(edits('set_style')).toHaveLength(1))
+      expect(edits('set_style')[0]).toEqual(expect.arrayContaining([
+        { op: 'update_layer', layer: 'balloon', patch: { translation: { style: { chars: { size: 36 } } } } },
+        { op: 'update_layer', layer: 'sign', patch: { translation: { style: { chars: { size: 36 } } } } },
+        { op: 'update_layer', layer: 'note', patch: { style: { chars: { size: 36 } } } },
+      ]))
+      expect(edits()).toEqual([])
+    },
+  )
+
+  it('preserves every mode in a mixed proportional and Best Fit selection', async () => {
+    const edits = await chooseSize('proportional', '36', 'best')
+    await waitFor(() => expect(edits('set_style')).toHaveLength(1))
+    expect(edits()).toEqual([])
   })
 
   it('fits each frame, a box or a path, for Auto, leaving texts without one alone', async () => {

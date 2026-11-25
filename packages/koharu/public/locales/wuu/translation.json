@@ -182,6 +182,7 @@
       "best": "Best Fit",
       "grow": "Grow",
       "none": "Fixed",
+      "proportional": "Proportional",
       "shrink": "Shrink"
     },
     "textFit": "Text fit"

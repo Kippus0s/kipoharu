@@ -54,7 +54,7 @@ const WHITE = '#FFFFFF'
 
 /** The tools whose selection the bar follows; a brush's settings are on the tool rail. */
 const TOOLS: CanvasTool[] = ['select', 'direct_select', 'text']
-const FIT_MODES = ['none', 'shrink', 'grow', 'best'] as const
+const FIT_MODES = ['none', 'shrink', 'grow', 'best', 'proportional'] as const
 
 /** The selected texts' type settings in a bar beside them on the canvas, as Photoshop's Contextual
  * Task Bar shows a selection's type settings on the canvas: centred below the texts, or above when
@@ -303,12 +303,7 @@ export function TypeBar() {
             available: fitted,
             onPick: () => send(setFrameFit, targets, 'best'),
           }}
-          onChange={(next) => {
-            applyChars({ size: next })
-            // A typed size is the size the text draws at, as in Photoshop and Clip Studio Paint, so
-            // a frame that shrinks or grows its text stops fitting it; a growing box keeps the size.
-            if (fitted) send(setFrameFit, targets, 'none')
-          }}
+          onChange={(next) => applyChars({ size: next })}
         />
       </div>
       {canFit && (

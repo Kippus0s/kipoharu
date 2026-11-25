@@ -1,7 +1,7 @@
 //! Moving the view: the pan gesture, the wheel, and pinch. Each answers the
 //! camera it wants, which the canvas clamps.
 
-use koharu_scene::{Content, Edit, Fit, Frame, Op, PathFit, Ref};
+use koharu_scene::{Content, Edit, Op, Ref};
 use kurbo::{Point, TranslateScale, Vec2};
 use serde_json::json;
 use ui_events::ScrollDelta;
@@ -98,17 +98,8 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
                 if size == old {
                     return Vec::new();
                 }
-                // Like the size field in TypeBar, manual sizing disables automatic fitting.
+                // Preserve the chosen fit; the scene scales proportional frames on size edits.
                 let mut patch = json!({"style": {"chars": {"size": size}}});
-                match &text.frame {
-                    Frame::Box { fit, .. } if *fit != Fit::None && *fit != Fit::Grow => {
-                        patch["frame"] = json!({"box": {"fit": "none"}});
-                    }
-                    Frame::Path { fit, .. } if *fit != PathFit::None => {
-                        patch["frame"] = json!({"path": {"fit": "none"}});
-                    }
-                    _ => {}
-                }
                 if translation {
                     patch = json!({"translation": patch});
                 }

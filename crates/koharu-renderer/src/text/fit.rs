@@ -749,6 +749,49 @@ mod tests {
     }
 
     #[test]
+    fn proportional_font_and_frame_keep_line_breaks() -> Result<()> {
+        for path in [false, true] {
+            let layout = |scale: f32| -> Result<Placed> {
+                let (mut styled, _) = in_box(100.0 * f64::from(scale), 60.0 * f64::from(scale), "proportional")?;
+                if path {
+                    let w = 100.0 * scale;
+                    let h = 60.0 * scale;
+                    styled.frame = serde_json::from_value(serde_json::json!({
+                        "path": {"path": format!("M0 0H{w}V{h}H0Z"),
+                            "fit": "proportional", "inset": 0.0}
+                    }))?;
+                }
+                let room = Room::new(&styled.frame, false);
+                let (_, placed) = fit(&styled, &room, |_| {
+                    [Break::Normal, Break::Normal, Break::Normal, Break::End]
+                        .into_iter()
+                        .map(|after| {
+                            let mut segment = word(40.0, after);
+                            segment.advance *= scale;
+                            segment.trailing *= scale;
+                            segment.hyphen *= scale;
+                            segment.size *= scale;
+                            segment
+                        })
+                        .collect()
+                });
+                Ok(placed)
+            };
+            let original = layout(1.0)?;
+            let enlarged = layout(2.0)?;
+            assert!(!original.overflowed && !enlarged.overflowed);
+            assert_eq!(original.scale, 1.0);
+            assert_eq!(enlarged.scale, 1.0);
+            assert!(original.lines.len() > 1);
+            assert_eq!(
+                original.lines.iter().map(|line| &line.segments).collect::<Vec<_>>(),
+                enlarged.lines.iter().map(|line| &line.segments).collect::<Vec<_>>(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn a_best_fit_text_grows_to_the_largest_size_its_box_holds() -> Result<()> {
         // A word 40 long in a box 100 wide and 60 tall: its line holds it up
         // to 2.5 times, and the box's height up to 5.

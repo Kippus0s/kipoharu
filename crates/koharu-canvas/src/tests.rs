@@ -1102,8 +1102,87 @@ fn alt_wheel_sizes_a_selected_block_translation() {
     assert_eq!(apply(&mut fixture, effects), ["set_style"]);
     let translation = &layer(&fixture, block)["translation"];
     assert_eq!(translation["style"]["chars"]["size"], json!(41.0));
-    assert_eq!(translation["frame"]["box"]["fit"], json!("none"));
+    assert_eq!(translation["frame"]["box"]["fit"], json!("best"));
     assert_eq!(fixture.canvas.camera(), before);
+}
+
+#[test]
+fn alt_wheel_preserves_all_non_proportional_fit_modes() {
+    let mut ops = Vec::new();
+    for fit in ["none", "shrink", "best", "grow"] {
+        ops.push(json!({"op": "add_layer", "page": "$page", "index": ops.len(), "layer": {
+            "kind": "text", "content": "Hi", "style": {"chars": {"size": 40}},
+            "frame": {"box": {"bounds": {"x": 100, "y": 100, "width": 80, "height": 40}, "fit": fit}}
+        }}));
+    }
+    for fit in ["none", "shrink", "best"] {
+        ops.push(json!({"op": "add_layer", "page": "$page", "index": ops.len(), "layer": {
+            "kind": "block", "source": {"content": "original"}, "translation": {
+                "content": "Hi", "style": {"chars": {"size": 40}},
+                "frame": {"path": {"path": "M200 100L280 100L280 140L200 140Z", "fit": fit}}
+            }
+        }}));
+    }
+    let Some(mut fixture) = unscaled(ops) else { return; };
+    let ids = layers(&fixture);
+    fixture.canvas.set_tool(Tool::Select);
+    fixture.canvas.select(ids.clone());
+    let before: Vec<_> = ids.iter().map(|id| layer(&fixture, *id)).collect();
+    for (delta, size) in [(-1.0, 41.0), (1.0, 40.0)] {
+        let effects = fixture.canvas.input(scroll((200.0, 200.0),
+            ScrollDelta::LineDelta(0.0, delta), Modifiers::ALT)).expect("input");
+        assert_eq!(apply(&mut fixture, effects), ["set_style"]);
+        for (id, old) in ids.iter().zip(&before) {
+            let new = layer(&fixture, *id);
+            let (old, new) = if old["kind"] == "block" {
+                (&old["translation"], &new["translation"])
+            } else {
+                (old, &new)
+            };
+            assert_eq!(new["style"]["chars"]["size"], json!(size));
+            assert_eq!(new["frame"], old["frame"]);
+        }
+    }
+}
+
+#[test]
+fn alt_wheel_scales_proportional_box_and_balloon_translation() {
+    let Some(mut fixture) = unscaled(vec![
+        json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {
+            "kind": "text", "content": "Hi", "style": {"chars": {"size": 40}},
+            "frame": {"box": {"bounds": {"x": 100, "y": 100, "width": 80, "height": 40}, "fit": "proportional"}}
+        }}),
+        json!({"op": "add_layer", "page": "$page", "index": 1, "layer": {
+            "kind": "block", "source": {"content": "やあ"}, "translation": {
+                "content": "Hi", "style": {"chars": {"size": 20}},
+                "frame": {"path": {"path": "M200 100L280 100L280 140L200 140Z", "fit": "proportional"}}
+            }
+        }}),
+    ]) else { return; };
+    let ids = layers(&fixture);
+    fixture.canvas.set_tool(Tool::Select);
+    fixture.canvas.select(ids.clone());
+    let before = fixture.canvas.camera();
+    for (delta, box_size, path_size, box_width, path_width) in [
+        (-1.0, 41.0, 21.0, 82.0, 84.0), (1.0, 40.0, 20.0, 80.0, 80.0),
+    ] {
+        let effects = fixture.canvas.input(scroll((200.0, 200.0),
+            ScrollDelta::LineDelta(0.0, delta), Modifiers::ALT)).expect("input");
+        assert_eq!(apply(&mut fixture, effects), ["set_style"]);
+        let boxed = layer(&fixture, ids[0]);
+        let block = layer(&fixture, ids[1]);
+        let translation = &block["translation"];
+        assert_eq!(boxed["style"]["chars"]["size"], json!(box_size));
+        assert_eq!(translation["style"]["chars"]["size"], json!(path_size));
+        assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
+        assert_eq!(translation["frame"]["path"]["fit"], "proportional");
+        let width = boxed["frame"]["box"]["bounds"]["width"].as_f64().expect("width");
+        assert!(near(width, box_width));
+        let path = BezPath::from_svg(translation["frame"]["path"]["path"].as_str().expect("path")).expect("SVG");
+        assert!(near(path.bounding_box().width(), path_width));
+        assert!(near(path.bounding_box().center().x, 240.0));
+        assert_eq!(fixture.canvas.camera(), before);
+    }
 }
 
 #[test]

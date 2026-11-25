@@ -124,14 +124,14 @@ export function setStyle(layers: Layer[], style: TextStyle): Promise<Change> {
 }
 
 /** Sets the fit of each layer's own frame, a box or a path: a text's, or a block's translation's.
- * Point text and a block with no translation have no frame to fit, and a growing box draws its
- * text at the set size already, so `none` leaves it growing. */
+ * Point text and a block with no translation have no frame to fit. Only explicit fit choices
+ * call this helper; changing a font size never changes the fit. */
 export function setFit(layers: Layer[], fit: PathFit): Promise<Change> {
   return edit(
     'update_layer',
     layers.flatMap((layer): Op[] => {
       const frame = letteringOf(layer)?.frame
-      if (typeof frame !== 'object' || (fit === 'none' && frame.box?.fit === 'grow')) return []
+      if (typeof frame !== 'object') return []
       const patch = { frame: { [frame.box ? 'box' : 'path']: { fit } } }
       return [
         {

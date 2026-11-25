@@ -238,9 +238,11 @@ pub enum Fit {
     /// Publisher's Best Fit fills its text box: it shrinks as `Shrink` does
     /// down to half its size, and then on until it fits.
     Best,
+    /// Manual size changes scale the frame and font together about its centre.
+    Proportional,
 }
 
-/// How a path's text meets the path: as a box's, but a path never grows.
+/// How a path's text meets the path: as a box's, but no content-driven growth.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, Type, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PathFit {
@@ -248,6 +250,7 @@ pub enum PathFit {
     Shrink,
     None,
     Best,
+    Proportional,
 }
 
 /// Where the lines sit along a frame's block axis, which follows the writing

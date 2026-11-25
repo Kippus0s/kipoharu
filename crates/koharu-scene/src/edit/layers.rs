@@ -229,8 +229,30 @@ impl Run<'_, '_> {
         }
         let mut json = serde_json::to_value(&old).expect("layers serialize");
         json_patch::merge(&mut json, patch);
-        let new: Layer =
+        let mut new: Layer =
             serde_json::from_value(json).map_err(|error| Error::invalid(op, error.to_string()))?;
+        // A size-only geometry change in Proportional mode follows the base size.
+        // An explicit frame patch takes precedence; source text and masks are untouched.
+        let resize = |before: &crate::Text, after: &mut crate::Text, patch: &Value| {
+            if patch.get("frame").is_none()
+                && patch.pointer("/style/chars/size").is_some_and(Value::is_number)
+            {
+                after.scale_proportional_frame(before)
+            } else {
+                Ok(())
+            }
+        };
+        match (&old.content, &mut new.content) {
+            (Content::Text(before), Content::Text(after)) => resize(before, after, patch),
+            (Content::Block(before), Content::Block(after)) => {
+                match (&before.translation, &mut after.translation) {
+                    (Some(before), Some(after)) => resize(before, after, &patch["translation"]),
+                    _ => Ok(()),
+                }
+            }
+            _ => Ok(()),
+        }
+        .map_err(|error| Error::invalid(op, error))?;
         if new == old {
             return Ok(());
         }

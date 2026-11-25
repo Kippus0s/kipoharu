@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use similar::{ChangeTag, TextDiff};
 use specta::Type;
 
-use crate::{Align, Direction, Frame, Rgba, Transform};
+use crate::{Align, Direction, Fit, Frame, Path, PathFit, Rgba, Transform};
 
 /// Character values; each is also a mark key on a span, and a mark wins for
 /// its span.
@@ -240,6 +240,61 @@ pub struct Text {
 }
 
 impl Text {
+    /// Scale only the text frame, not its transform or its containing block.
+    /// Both the TypeBar and the canvas wheel write the base character size.
+    pub(crate) fn scale_proportional_frame(&mut self, before: &Self) -> Result<(), String> {
+        let old = before.style.chars.size.unwrap_or(24.0);
+        let new = self.style.chars.size.unwrap_or(24.0);
+        if old == new || self.frame != before.frame {
+            return Ok(());
+        }
+        let ratio = new / old;
+        if !old.is_finite()
+            || !new.is_finite()
+            || old <= 0.0
+            || new <= 0.0
+            || !ratio.is_finite()
+            || ratio <= 0.0
+        {
+            return Ok(());
+        }
+        match &mut self.frame {
+            Frame::Box {
+                bounds, fit: Fit::Proportional, ..
+            } => {
+                let width = bounds.width * ratio;
+                let height = bounds.height * ratio;
+                let x = bounds.x + (bounds.width - width) / 2.0;
+                let y = bounds.y + (bounds.height - height) / 2.0;
+                if ![x, y, width, height].iter().all(|v| v.is_finite()) {
+                    return Err("proportional frame is too large".into());
+                }
+                bounds.x = x;
+                bounds.y = y;
+                bounds.width = width;
+                bounds.height = height;
+            }
+            Frame::Path {
+                path, fit: PathFit::Proportional, ..
+            } => {
+                let mut outline = BezPath::from(&*path);
+                if outline.elements().is_empty() {
+                    return Ok(());
+                }
+                let centre = outline.bounding_box().center();
+                let dx = centre.x * (1.0 - ratio);
+                let dy = centre.y * (1.0 - ratio);
+                if !dx.is_finite() || !dy.is_finite() {
+                    return Err("proportional path is too large".into());
+                }
+                outline.apply_affine(Affine::new([ratio, 0.0, 0.0, ratio, dx, dy]));
+                *path = Path::try_from(outline.to_svg())?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Where its frame lies on the page, its transform applied; `None` for
     /// point text.
     #[must_use]

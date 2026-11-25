@@ -206,6 +206,7 @@ impl Shape {
                     Fit::Shrink => PathFit::Shrink,
                     Fit::None => PathFit::None,
                     Fit::Best => PathFit::Best,
+                    Fit::Proportional => PathFit::Proportional,
                     Fit::Grow => return None,
                 },
                 anchor: *anchor,

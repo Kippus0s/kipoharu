@@ -307,6 +307,8 @@ export type Fit =
    *  down to half its size, and then on until it fits.
    */
   | 'best'
+  /**  Manual size changes scale the frame and font together about its centre. */
+  | 'proportional'
 
 /**  One of a family's faces, by the weight and slant a text asks for. */
 export type FontFace = {
@@ -660,8 +662,8 @@ export type Panel = {
 /**  SVG path data. */
 export type Path = string
 
-/**  How a path's text meets the path: as a box's, but a path never grows. */
-export type PathFit = 'shrink' | 'none' | 'best'
+/**  How a path's text meets the path: as a box's, but no content-driven growth. */
+export type PathFit = 'shrink' | 'none' | 'best' | 'proportional'
 
 export type PipelineConfig = {
   detector?: DetectorConfig
