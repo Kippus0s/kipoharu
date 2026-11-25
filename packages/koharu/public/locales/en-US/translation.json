@@ -43,6 +43,16 @@
     "tryAgain": "Try again",
     "unknown": "The native application returned an unknown error."
   },
+  "exportBatch": {
+    "description": "Choose the pages and file formats to export.",
+    "deselectAll": "Deselect all",
+    "export": "Export",
+    "formats": "File formats",
+    "invert": "Invert",
+    "selectAll": "Select all",
+    "selected": "{{count}} of {{total}} pages selected",
+    "title": "Batch export"
+  },
   "fill": {
     "deselect": "Deselect",
     "generate": "Generate",
@@ -209,6 +219,8 @@
     "donate": "Donate",
     "edit": "Edit",
     "export": "Export Project",
+    "exportBatch": "Batch Export…",
+    "exportSelectedPage": "{{format}} (Selected Page)…",
     "file": "File",
     "fit": "Fit Window",
     "github": "GitHub",

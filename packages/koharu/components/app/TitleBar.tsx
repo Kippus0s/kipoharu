@@ -3,7 +3,7 @@
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { FilePlus2, FolderOpen, LoaderCircle } from 'lucide-react'
 import Image from 'next/image'
-import { useState, type ComponentProps } from 'react'
+import { Fragment, useState, type ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AboutDialog } from '@/components/app/AboutDialog'
@@ -12,7 +12,17 @@ import { send, useCommand, useImportPages, usePage, useProject } from '@/lib/que
 import { deleteSelection } from '@/lib/scene'
 import { shortcutLabel, shortcuts } from '@/lib/shortcuts'
 import { useKoharuStore } from '@/lib/store'
-import { commands } from '@koharu/ipc/protocol'
+import { commands, type ExportFormat, type PageId } from '@koharu/ipc/protocol'
+import { Button } from '@koharu/ui/components/button'
+import { Checkbox } from '@koharu/ui/components/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@koharu/ui/components/dialog'
 import {
   Menubar,
   MenubarCheckboxItem,
@@ -28,15 +38,23 @@ import {
 } from '@koharu/ui/components/menubar'
 import { cn } from '@koharu/ui/lib/utils'
 
+const exportFormats = ['png', 'psd', 'cbz'] as const
+
 export function TitleBar() {
   const { t } = useTranslation()
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchPages, setBatchPages] = useState<PageId[]>([])
+  const [batchFormats, setBatchFormats] = useState<ExportFormat[]>(['png'])
   const macOS = useMacOS()
   const project = useProject().data
   const pageQuery = usePage(Boolean(project))
   const pages = project?.pages ?? []
   const page = project ? (pageQuery.data ?? null) : null
   const pageNumber = page ? pages.findIndex((candidate) => candidate.id === page.id) + 1 : 0
+  const activePage = project?.page ?? null
+  const selectedPages = useKoharuStore((state) => state.selectedPages)
+  const validBatchPages = pages.filter((candidate) => batchPages.includes(candidate.id))
   const history = project?.history
   const historyOpen = useKoharuStore((state) => state.historyOpen)
   const setHistoryOpen = useKoharuStore((state) => state.setHistoryOpen)
@@ -54,6 +72,15 @@ export function TitleBar() {
     background: t('psd.background'),
     cleanup: t('psd.cleanup'),
     outline: t('psd.outline'),
+  }
+
+  const openBatch = () => {
+    const initial = pages
+      .filter((candidate) => selectedPages.includes(candidate.id))
+      .map((candidate) => candidate.id)
+    setBatchPages(initial.length ? initial : activePage ? [activePage] : [])
+    setBatchFormats(['png'])
+    setBatchOpen(true)
   }
 
   return (
@@ -108,15 +135,28 @@ export function TitleBar() {
                   {t('menu.export')}
                 </MenubarSubTrigger>
                 <MenubarSubContent>
-                  {(['png', 'psd', 'cbz'] as const).map((format) => (
-                    <MenubarItem
-                      key={format}
-                      disabled={exporting}
-                      onClick={() => exportProject(format, psdLabels)}
-                    >
-                      {format.toUpperCase()}…
-                    </MenubarItem>
+                  {exportFormats.map((format) => (
+                    <Fragment key={format}>
+                      <MenubarItem
+                        disabled={exporting}
+                        onClick={() => exportProject([format], psdLabels, null)}
+                      >
+                        {format.toUpperCase()}…
+                      </MenubarItem>
+                      <MenubarItem
+                        disabled={exporting || !activePage}
+                        onClick={() => {
+                          if (activePage) exportProject([format], psdLabels, [activePage])
+                        }}
+                      >
+                        {t('menu.exportSelectedPage', { format: format.toUpperCase() })}
+                      </MenubarItem>
+                    </Fragment>
                   ))}
+                  <MenubarSeparator />
+                  <MenubarItem disabled={exporting} onClick={openBatch}>
+                    {t('menu.exportBatch')}
+                  </MenubarItem>
                 </MenubarSubContent>
               </MenubarSub>
               <MenubarSeparator />
@@ -236,6 +276,97 @@ export function TitleBar() {
         {!macOS && <WindowControls />}
       </header>
       <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
+      <Dialog open={batchOpen && Boolean(project)} onOpenChange={setBatchOpen}>
+        <DialogContent className='max-h-[90vh] min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>{t('exportBatch.title')}</DialogTitle>
+            <DialogDescription>{t('exportBatch.description')}</DialogDescription>
+          </DialogHeader>
+          <fieldset className='flex flex-wrap gap-5 rounded-lg border p-3'>
+            <legend className='px-1 text-xs font-medium'>{t('exportBatch.formats')}</legend>
+            {exportFormats.map((format) => (
+              <label key={format} className='flex cursor-pointer items-center gap-2 text-sm'>
+                <Checkbox
+                  checked={batchFormats.includes(format)}
+                  onCheckedChange={(checked) =>
+                    setBatchFormats((current) =>
+                      checked ? [...current, format] : current.filter((item) => item !== format),
+                    )
+                  }
+                  aria-label={format.toUpperCase()}
+                />
+                {format.toUpperCase()}
+              </label>
+            ))}
+          </fieldset>
+          <div className='flex flex-wrap items-center gap-1'>
+            <span className='mr-auto text-xs font-medium'>{t('navigator.pages')}</span>
+            <Button
+              size='xs'
+              variant='outline'
+              onClick={() => setBatchPages(pages.map((item) => item.id))}
+            >
+              {t('exportBatch.selectAll')}
+            </Button>
+            <Button size='xs' variant='outline' onClick={() => setBatchPages([])}>
+              {t('exportBatch.deselectAll')}
+            </Button>
+            <Button
+              size='xs'
+              variant='outline'
+              onClick={() =>
+                setBatchPages((current) =>
+                  pages.filter((item) => !current.includes(item.id)).map((item) => item.id),
+                )
+              }
+            >
+              {t('exportBatch.invert')}
+            </Button>
+          </div>
+          <div className='min-h-0 max-h-[40vh] overflow-y-auto rounded-lg border p-1'>
+            {pages.map((candidate, index) => (
+              <label
+                key={candidate.id}
+                className='flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 hover:bg-muted'
+              >
+                <Checkbox
+                  checked={batchPages.includes(candidate.id)}
+                  onCheckedChange={(checked) =>
+                    setBatchPages((current) =>
+                      checked
+                        ? [...current, candidate.id]
+                        : current.filter((id) => id !== candidate.id),
+                    )
+                  }
+                  aria-label={t('navigator.pageNumber', { number: index + 1 })}
+                />
+                {t('navigator.pageNumber', { number: index + 1 })}
+              </label>
+            ))}
+          </div>
+          <DialogFooter className='items-center'>
+            <span className='mr-auto text-xs text-muted-foreground tabular-nums' role='status'>
+              {t('exportBatch.selected', { count: validBatchPages.length, total: pages.length })}
+            </span>
+            <Button variant='outline' onClick={() => setBatchOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              disabled={exporting || validBatchPages.length === 0 || batchFormats.length === 0}
+              onClick={() => {
+                setBatchOpen(false)
+                exportProject(
+                  batchFormats,
+                  psdLabels,
+                  validBatchPages.map((candidate) => candidate.id),
+                )
+              }}
+            >
+              {t('exportBatch.export')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
