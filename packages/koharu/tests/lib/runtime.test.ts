@@ -23,7 +23,6 @@ function tell(name: keyof typeof events, payload: unknown): void {
 const preferences: Preferences = {
   pipeline: {},
   renderer: { font_families: ['CCWildWords'] },
-  agent: {},
   providers: {},
 }
 

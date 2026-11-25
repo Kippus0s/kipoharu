@@ -91,7 +91,9 @@ export function TypesettingPreferences({
               <FontSlot
                 value={primary ?? ''}
                 families={choicesFor(primary ?? '')}
-                excluded={fontFamilies.filter((name) => normalizeFontName(name) !== normalizeFontName(primary ?? ''))}
+                excluded={fontFamilies.filter(
+                  (name) => normalizeFontName(name) !== normalizeFontName(primary ?? ''),
+                )}
                 disabled={fonts.isPending}
                 label={t('settings.typesetting.primary')}
                 placeholder={loading ?? t('settings.typesetting.addFamily')}
@@ -116,7 +118,9 @@ export function TypesettingPreferences({
                       id={ids[index + 1] ?? family}
                       family={family}
                       families={choicesFor(family)}
-                      excluded={fontFamilies.filter((name) => normalizeFontName(name) !== normalizeFontName(family))}
+                      excluded={fontFamilies.filter(
+                        (name) => normalizeFontName(name) !== normalizeFontName(family),
+                      )}
                       label={t('settings.typesetting.familyLabel', { index: index + 2 })}
                       onChange={(next) => save(fontFamilies.with(index + 1, next))}
                       onRemove={() => remove(index + 1)}

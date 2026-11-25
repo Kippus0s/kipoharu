@@ -16,7 +16,8 @@ function locate(control: HTMLElement) {
   return { viewport, rect, position: { x: rect.left - viewport.left, y: rect.top - viewport.top } }
 }
 
-const buttonClass = 'grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground'
+const buttonClass =
+  'grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground'
 
 /** Only the grip moves the bar. Other controls keep their ordinary pointer behaviour. */
 export function MovableTypeBar(props: ComponentProps<typeof ContextBar>) {
@@ -31,7 +32,13 @@ function VisibleTypeBar({ children, ...props }: ComponentProps<typeof ContextBar
   const setPosition = useTypeBarWorkspace((state) => state.setPosition)
   const setHidden = useTypeBarWorkspace((state) => state.setHidden)
   const [preview, setPreview] = useState<BarPosition | null>(null)
-  const drag = useRef<{ id: number; x: number; y: number; start: BarPosition; moved: boolean } | null>(null)
+  const drag = useRef<{
+    id: number
+    x: number
+    y: number
+    start: BarPosition
+    moved: boolean
+  } | null>(null)
 
   const down = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || !event.isPrimary || drag.current) return
@@ -40,7 +47,13 @@ function VisibleTypeBar({ children, ...props }: ComponentProps<typeof ContextBar
     event.preventDefault()
     event.stopPropagation()
     event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, start: geometry.position, moved: false }
+    drag.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      start: geometry.position,
+      moved: false,
+    }
   }
   const nextPosition = (event: PointerEvent<HTMLButtonElement>) => {
     const active = drag.current
@@ -50,7 +63,13 @@ function VisibleTypeBar({ children, ...props }: ComponentProps<typeof ContextBar
     if (!active.moved && Math.hypot(dx, dy) < 3) return null
     active.moved = true
     const geometry = locate(event.currentTarget)
-    return geometry ? clampBarPosition({ x: active.start.x + dx, y: active.start.y + dy }, geometry.viewport, geometry.rect) : null
+    return geometry
+      ? clampBarPosition(
+          { x: active.start.x + dx, y: active.start.y + dy },
+          geometry.viewport,
+          geometry.rect,
+        )
+      : null
   }
   const finish = (event: PointerEvent<HTMLButtonElement>, commit: boolean) => {
     if (drag.current?.id !== event.pointerId) return
@@ -58,39 +77,73 @@ function VisibleTypeBar({ children, ...props }: ComponentProps<typeof ContextBar
     drag.current = null
     setPreview(null)
     if (next) setPosition(next)
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId)
   }
   const moveWithKeys = (event: KeyboardEvent<HTMLButtonElement>) => {
-    const directions: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+    const directions: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+    }
     const delta = directions[event.key]
     const geometry = locate(event.currentTarget)
     if (!delta || !geometry) return
     event.preventDefault()
     event.stopPropagation()
     const step = event.shiftKey ? 32 : 8
-    setPosition(clampBarPosition({ x: geometry.position.x + delta[0] * step, y: geometry.position.y + delta[1] * step }, geometry.viewport, geometry.rect))
+    setPosition(
+      clampBarPosition(
+        { x: geometry.position.x + delta[0] * step, y: geometry.position.y + delta[1] * step },
+        geometry.viewport,
+        geometry.rect,
+      ),
+    )
   }
 
   return (
     <ContextBar {...props} pinnedPosition={preview ?? position}>
       <div className='flex shrink-0 items-center gap-0.5 border-r border-border pr-1'>
-        <button type='button' className={buttonClass + ' touch-none cursor-grab select-none active:cursor-grabbing'}
-          title={t('typeBarWorkspace.drag')} aria-label={t('typeBarWorkspace.drag')}
-          onPointerDown={down} onPointerMove={(event) => { const next = nextPosition(event); if (next) setPreview(next) }}
-          onPointerUp={(event) => finish(event, true)} onPointerCancel={(event) => finish(event, false)}
-          onLostPointerCapture={(event) => finish(event, false)} onKeyDown={moveWithKeys}>
+        <button
+          type='button'
+          className={buttonClass + ' cursor-grab touch-none select-none active:cursor-grabbing'}
+          title={t('typeBarWorkspace.drag')}
+          aria-label={t('typeBarWorkspace.drag')}
+          onPointerDown={down}
+          onPointerMove={(event) => {
+            const next = nextPosition(event)
+            if (next) setPreview(next)
+          }}
+          onPointerUp={(event) => finish(event, true)}
+          onPointerCancel={(event) => finish(event, false)}
+          onLostPointerCapture={(event) => finish(event, false)}
+          onKeyDown={moveWithKeys}
+        >
           <GripVertical className='size-4' />
         </button>
-        <button type='button' className={buttonClass + (position ? ' text-primary' : '')}
+        <button
+          type='button'
+          className={buttonClass + (position ? ' text-primary' : '')}
           title={t(position ? 'typeBarWorkspace.unpin' : 'typeBarWorkspace.pin')}
           aria-label={t(position ? 'typeBarWorkspace.unpin' : 'typeBarWorkspace.pin')}
           onClick={(event) => {
             if (position) setPosition(null)
-            else { const geometry = locate(event.currentTarget); if (geometry) setPosition(geometry.position) }
-          }}>
+            else {
+              const geometry = locate(event.currentTarget)
+              if (geometry) setPosition(geometry.position)
+            }
+          }}
+        >
           {position ? <PinOff className='size-3.5' /> : <Pin className='size-3.5' />}
         </button>
-        <button type='button' className={buttonClass} title={t('typeBarWorkspace.hide')} aria-label={t('typeBarWorkspace.hide')} onClick={() => setHidden(true)}>
+        <button
+          type='button'
+          className={buttonClass}
+          title={t('typeBarWorkspace.hide')}
+          aria-label={t('typeBarWorkspace.hide')}
+          onClick={() => setHidden(true)}
+        >
           <EyeOff className='size-3.5' />
         </button>
       </div>
@@ -98,4 +151,3 @@ function VisibleTypeBar({ children, ...props }: ComponentProps<typeof ContextBar
     </ContextBar>
   )
 }
-

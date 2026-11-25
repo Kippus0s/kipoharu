@@ -1,12 +1,10 @@
 'use client'
 
-import { BookOpenText, Bot, Layers3 } from 'lucide-react'
+import { BookOpenText, Layers3 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { AgentPanel } from '@/components/editor/AgentPanel'
 import { LayersPanel } from '@/components/editor/LayersPanel'
 import { StoryPanel } from '@/components/editor/StoryPanel'
-import { useProject } from '@/lib/queries'
 import { shortcutLabel, shortcuts } from '@/lib/shortcuts'
 import { useKoharuStore, type Panel } from '@/lib/store'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@koharu/ui/components/tabs'
@@ -15,15 +13,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@koharu/ui/components/t
 const tabs = [
   ['layers', Layers3],
   ['story', BookOpenText],
-  ['agent', Bot],
 ] as const satisfies ReadonlyArray<readonly [Panel, typeof Layers3]>
 
-/** The right pane: Layers, Story, and Agent as tabs, each its full height, as Photoshop groups its
- * panels. The agent's tab stays mounted, so its conversation outlives a switch, and starts over
- * with another project, as the desktop's conversation does. */
+/** The right pane: Layers and Story as tabs, each its full height. */
 export function RightSidebar() {
   const { t } = useTranslation()
-  const project = useProject().data?.name ?? null
   const panel = useKoharuStore((state) => state.panel)
   const showPanel = useKoharuStore((state) => state.showPanel)
   // Photoshop's key for Layers, which shows Story in its place when it's in front. It works from a
@@ -33,7 +27,10 @@ export function RightSidebar() {
   const tab =
     'h-7 flex-none gap-1 px-1.5 text-[10px] font-semibold after:bg-primary data-active:text-primary data-active:hover:text-primary [&_svg]:size-3'
   return (
-    <aside data-workspace-sidebar className='flex h-full min-h-0 flex-col bg-[var(--surface-panel)]'>
+    <aside
+      data-workspace-sidebar
+      className='flex h-full min-h-0 flex-col bg-[var(--surface-panel)]'
+    >
       <Tabs
         value={panel}
         onValueChange={(next) => showPanel(next as Panel)}
@@ -60,9 +57,6 @@ export function RightSidebar() {
         </TabsContent>
         <TabsContent value='story' className='flex min-h-0 flex-col'>
           <StoryPanel />
-        </TabsContent>
-        <TabsContent value='agent' keepMounted className='flex min-h-0 flex-col'>
-          <AgentPanel key={project} />
         </TabsContent>
       </Tabs>
     </aside>

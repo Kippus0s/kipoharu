@@ -6,7 +6,7 @@ import remarkGfm from 'remark-gfm'
 
 import { cn } from '@koharu/ui/lib/utils'
 
-/** Markdown, as release notes and the agent's replies come, in the editor's small type; a web
+/** Markdown, as release notes come, in the editor's small type; a web
  * link opens in the browser. */
 export function Markdown({ children, className }: { children: string; className?: string }) {
   return (

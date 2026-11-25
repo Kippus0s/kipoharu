@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use futures::future::{AbortHandle, Abortable};
-use koharu_agent::AgentConfig;
 use koharu_config::secrets::SecretString;
 use koharu_llm::{Model, Providers, SignInPrompt, VENDORS};
 use koharu_pipeline::PipelineConfig;
@@ -21,7 +20,6 @@ use crate::app::App;
 pub struct Preferences {
     pub pipeline: PipelineConfig,
     pub renderer: RendererConfig,
-    pub agent: AgentConfig,
     pub providers: Providers,
 }
 
@@ -29,7 +27,6 @@ fn preferences() -> anyhow::Result<Preferences> {
     Ok(Preferences {
         pipeline: koharu_config::get()?,
         renderer: koharu_config::get()?,
-        agent: koharu_config::get()?,
         providers: koharu_config::get()?,
     })
 }
@@ -53,12 +50,10 @@ pub async fn save_preferences(
         let Preferences {
             pipeline,
             renderer,
-            agent,
             providers,
         } = preferences;
         koharu_config::update(|section: &mut PipelineConfig| *section = pipeline)?;
         koharu_config::update(|section: &mut RendererConfig| *section = renderer)?;
-        koharu_config::update(|section: &mut AgentConfig| *section = agent)?;
         koharu_config::update(|section: &mut Providers| *section = providers)?;
         let saved = self::preferences()?;
         app.pipeline.set_config(saved.pipeline.clone());

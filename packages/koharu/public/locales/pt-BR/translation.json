@@ -17,27 +17,6 @@
     "stop": "Parar",
     "title": "Atividade"
   },
-  "agent": {
-    "cancel": "Cancelar",
-    "cancelled": "Cancelado.",
-    "emptyDescription": "Peça ao agente para inspecionar, traduzir, editar ou processar este projeto. Ele verá as imagens das páginas somente quando necessário.",
-    "emptyTitle": "O que o Koharu deve fazer?",
-    "failed": "A solicitação do agente falhou.",
-    "loading": "Carregando o agente…",
-    "message": "Enviar mensagem ao agente do Koharu",
-    "model": "Modelo",
-    "newChat": "Novo chat",
-    "placeholder": "Peça ao Koharu para trabalhar neste projeto…",
-    "reasoning": "Raciocínio",
-    "send": "Enviar",
-    "thinking": "Pensando…",
-    "thought": "Pensou por {{seconds}} s",
-    "title": "Agente",
-    "toolFailed": "{{tool}} falhou",
-    "used": "Usou {{tool}}",
-    "using": "Usando {{tool}}",
-    "working": "Trabalhando…"
-  },
   "canvas": {
     "empty": "Selecione uma página para começar.",
     "notice": {

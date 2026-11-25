@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use futures::StreamExt as _;
-use koharu_agent::{Agent, McpServer, Tools};
 use koharu_canvas::{Canvas, Effect, Snapshot};
 use koharu_pipeline::{Area, Pipeline, PipelineConfig, Request, RunId, Stage, Target};
 use koharu_renderer::Renderer;
@@ -36,8 +35,6 @@ pub struct App {
     pub project: Mutex<Option<Project>>,
     /// Set once the window's app starts, before anything is told.
     handle: OnceLock<AppHandle<CefRuntime>>,
-    /// Set once it listens; serves the open project.
-    mcp: OnceLock<McpServer>,
 }
 
 /// The open project, and what runs on it, which go when it closes.
@@ -46,10 +43,6 @@ pub struct Project {
     pub session: Arc<Mutex<Session>>,
     /// The page the canvas shows; `None` when the project has none.
     pub page: Option<PageId>,
-    /// The conversation with the agent, on the model it was made with.
-    pub conversation: Option<(String, Arc<tokio::sync::Mutex<Agent>>)>,
-    /// The agent's run going on, numbered, which closing aborts.
-    pub run: Option<(u64, AbortOnDropHandle<()>)>,
     /// Shows and tells the session's changes.
     _relay: AbortOnDropHandle<()>,
 }
@@ -63,12 +56,10 @@ impl App {
             pipeline,
             project: Mutex::new(None),
             handle: OnceLock::new(),
-            mcp: OnceLock::new(),
         }
     }
 
-    /// Starts telling the interface every run's events and every download,
-    /// and serving MCP.
+    /// Starts telling the interface every run's events and every download.
     pub fn start(self: &Arc<Self>, handle: AppHandle<CefRuntime>) {
         let _ = self.handle.set(handle);
         let app = Arc::clone(self);
@@ -87,21 +78,6 @@ impl App {
             let mut transfers = koharu_runtime::transfers();
             while let Some(transfer) = transfers.next().await {
                 app.emit(events::DOWNLOAD, transfer);
-            }
-        });
-        let app = Arc::clone(self);
-        tauri::async_runtime::spawn(async move {
-            // The `serve` example's port, fixed so a client's configuration
-            // stays valid from one launch to the next.
-            match McpServer::start(7878).await {
-                Ok(server) => {
-                    let server = app.mcp.get_or_init(|| server);
-                    let project = app.project.lock();
-                    server.open(project.as_ref().map(|project| app.tools(project)));
-                }
-                Err(error) => {
-                    tracing::warn!("couldn't serve MCP on port 7878: {error:#}");
-                }
             }
         });
     }
@@ -136,20 +112,12 @@ impl App {
             Arc::clone(&session),
             self.renderer.clone(),
         )));
-        {
-            let mut project = self.project.lock();
-            let opened = project.insert(Project {
-                name: name.clone(),
-                session,
-                page,
-                conversation: None,
-                run: None,
-                _relay: relay,
-            });
-            if let Some(server) = self.mcp.get() {
-                server.open(Some(self.tools(opened)));
-            }
-        }
+        *self.project.lock() = Some(Project {
+            name: name.clone(),
+            session,
+            page,
+            _relay: relay,
+        });
         self.emit(events::PROJECT, Some(name));
         self.emit(events::PAGE, page);
         self.refresh()
@@ -158,13 +126,7 @@ impl App {
     /// Closes the open project, if one is, and stops what runs on it, so
     /// nothing writes to a closed session.
     pub fn close(&self) {
-        let project = {
-            let mut project = self.project.lock();
-            if let Some(server) = self.mcp.get() {
-                server.open(None);
-            }
-            project.take()
-        };
+        let project = self.project.lock().take();
         self.pipeline.stop();
         self.screen.set_canvas(None);
         if let Some(project) = project {
@@ -181,15 +143,6 @@ impl App {
             .as_ref()
             .map(|project| Arc::clone(&project.session))
             .context("no project is open")
-    }
-
-    /// The agent's tools on `project`.
-    pub fn tools(&self, project: &Project) -> Tools {
-        Tools::new(
-            Arc::clone(&project.session),
-            self.pipeline.clone(),
-            self.renderer.clone(),
-        )
     }
 
     /// Runs `stages` on `target` in the open project, with `config` in the

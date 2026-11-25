@@ -75,13 +75,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
 function StartupBoundary({ children }: { children: ReactNode }) {
   const initialized = useKoharuStore((state) => state.initialized)
-  return initialized ? (
-    <>
-      {children}
-    </>
-  ) : (
-    <StartupView />
-  )
+  return initialized ? <>{children}</> : <StartupView />
 }
 
 export default Providers

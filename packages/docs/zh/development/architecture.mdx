@@ -13,10 +13,7 @@ flowchart TB
   entry["crates/koharu: 进程"] --> desktop
   desktop --> canvas["koharu-canvas"] --> renderer["koharu-renderer"]
   desktop --> psd["koharu-psd"] --> renderer
-  desktop --> agent["koharu-agent"]
   desktop --> scene["koharu-scene"]
-  agent --> pipeline["koharu-pipeline"]
-  agent --> llm["koharu-llm"]
   pipeline --> llm
   pipeline --> ml["koharu-ml"] --> runtime["koharu-runtime"]
   llm --> runtime
@@ -27,15 +24,15 @@ flowchart TB
 
 ## 界面与应用
 
-| 组件              | 职责                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------- |
-| `packages/koharu` | 开始界面、页面列表、处理选择器、图层、故事、排版工具条、历史记录、智能体面板、设置和活动中心 |
-| `packages/ui`     | 共享的 React 基础组件与样式                                                                  |
-| `packages/ipc`    | 由桌面端命令和事件生成的 TypeScript 协议                                                     |
-| `crates/koharu`   | 进程：崩溃报告、日志、panic 处理和应用的启动顺序                                             |
-| `koharu-desktop`  | 窗口、命令、项目文件夹、导入与导出、设置以及 MCP 服务器                                      |
+| 组件              | 职责                                                                             |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `packages/koharu` | 开始界面、页面列表、处理选择器、图层、故事、排版工具条、历史记录、设置和活动中心 |
+| `packages/ui`     | 共享的 React 基础组件与样式                                                      |
+| `packages/ipc`    | 由桌面端命令和事件生成的 TypeScript 协议                                         |
+| `crates/koharu`   | 进程：崩溃报告、日志、panic 处理和应用的启动顺序                                 |
+| `koharu-desktop`  | 窗口、命令、项目文件夹、导入与导出、设置                                         |
 
-界面在 CEF 中离屏渲染，窗口把它合成在绘制页面的原生画布之上。界面通过场景的查询与编辑读写打开的项目，与智能体和 MCP 客户端使用同一套协议。无论由谁修改，每次变更都会通知窗口，因此画布和面板无需轮询即可重绘。设置是 `config.toml` 中的各个部分，保存时交给各自所属的组件。
+界面在 CEF 中离屏渲染，窗口把它合成在绘制页面的原生画布之上。界面通过场景的查询与编辑读写打开的项目。无论由谁修改，每次变更都会通知窗口，因此画布和面板无需轮询即可重绘。设置是 `config.toml` 中的各个部分，保存时交给各自所属的组件。
 
 <Note>
   `packages/ipc/src/protocol.ts` 由 Rust 签名生成。请修改 Rust
@@ -46,7 +43,7 @@ flowchart TB
 
 `koharu-scene` 负责项目文件、页面与图层、编辑和撤销历史。
 
-`koharu-pipeline` 对页面、文本块或涂抹的区域运行检测、OCR、修补和翻译，并负责调度、模型驻留和停止。`koharu-ml` 负责视觉模型，`koharu-llm` 负责本地和托管语言模型以及服务商登录。`koharu-agent` 负责智能体，以及智能体与 MCP 客户端共用的工具。
+`koharu-pipeline` 对页面、文本块或涂抹的区域运行检测、OCR、修补和翻译，并负责调度、模型驻留和停止。`koharu-ml` 负责视觉模型，`koharu-llm` 负责本地和托管语言模型以及服务商登录。
 
 ## 绘制
 

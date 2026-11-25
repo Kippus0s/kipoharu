@@ -87,19 +87,18 @@ export function FontPicker({
   const [tab, setTab] = useState<'mine' | 'online'>('mine')
   const online = useOnlineFonts(open && tab === 'online')
   const list = useRef<{ reveal: (index: number) => void }>(null)
-  const orderedFamilies = useMemo(
-    () => {
-      const candidates = tab === 'mine'
+  const orderedFamilies = useMemo(() => {
+    const candidates =
+      tab === 'mine'
         ? families
         : (online.data ?? []).filter(
-            (family) => !excluded.some((name) => normalizeFontName(name) === normalizeFontName(family.name)),
+            (family) =>
+              !excluded.some((name) => normalizeFontName(name) === normalizeFontName(family.name)),
           )
-      return [...candidates].sort((left, right) =>
-        left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }),
-      )
-    },
-    [tab, families, online.data, excluded],
-  )
+    return [...candidates].sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }),
+    )
+  }, [tab, families, online.data, excluded])
   const selectedFamily = useMemo(
     () =>
       orderedFamilies.find((family) => normalizeFontName(family.name) === normalizeFontName(value)),
@@ -180,7 +179,9 @@ export function FontPicker({
               aria-selected={tab === source}
               className={cn(
                 'flex-1 rounded-md px-2 py-1 text-[11px] font-medium',
-                tab === source ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-muted',
+                tab === source
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-muted',
               )}
               // Keep the combobox search focused when changing sources.
               onMouseDown={(event) => event.preventDefault()}

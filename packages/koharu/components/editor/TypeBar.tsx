@@ -125,9 +125,7 @@ export function TypeBar() {
   const canFit = frames.length > 0 && frames.every((entry) => entry !== null)
   const canGrow = canFit && frames.every((entry) => entry?.kind === 'box')
   const sharedFit =
-    canFit && frames.every((entry) => entry?.fit === frames[0]?.fit)
-      ? (frames[0]?.fit ?? '')
-      : ''
+    canFit && frames.every((entry) => entry?.fit === frames[0]?.fit) ? (frames[0]?.fit ?? '') : ''
 
   /** Merges `patch` into each target's style, shown at once on the first. */
   const apply = (patch: TextStyle) => {
@@ -200,13 +198,15 @@ export function TypeBar() {
       const ordered = [...favorites].sort((a, b) =>
         a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
       )
-      const previous = lastFavorite.current?.selection === selectionKey
-        ? lastFavorite.current.name
-        : family
+      const previous =
+        lastFavorite.current?.selection === selectionKey ? lastFavorite.current.name : family
       const index = ordered.findIndex((name) => sameFont(name, previous))
-      const nextIndex = index < 0
-        ? (shift ? ordered.length - 1 : 0)
-        : (index + (shift ? -1 : 1) + ordered.length) % ordered.length
+      const nextIndex =
+        index < 0
+          ? shift
+            ? ordered.length - 1
+            : 0
+          : (index + (shift ? -1 : 1) + ordered.length) % ordered.length
       const next = ordered[nextIndex]
       if (!next) return
       lastFavorite.current = { selection: selectionKey, name: next }

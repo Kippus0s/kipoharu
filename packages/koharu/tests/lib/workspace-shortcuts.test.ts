@@ -1,5 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
+
 import { useKoharuStore } from '@/lib/store'
 import { clampBarPosition, useTypeBarWorkspace } from '@/lib/typeBarWorkspace'
 import { handleWorkspaceShortcut, useWorkspaceShortcuts } from '@/lib/workspaceShortcuts'
@@ -34,12 +35,16 @@ describe('workspace shortcuts', () => {
     document.body.append(sidebar)
     try {
       let panelAtBlur: string | undefined
-      field.addEventListener('blur', () => { panelAtBlur = useKoharuStore.getState().panel })
+      field.addEventListener('blur', () => {
+        panelAtBlur = useKoharuStore.getState().panel
+      })
       field.focus()
       press('F7')
       expect(panelAtBlur).toBe('story')
       expect(useKoharuStore.getState().panel).toBe('layers')
-    } finally { sidebar.remove() }
+    } finally {
+      sidebar.remove()
+    }
   })
   it('toggles visibility with F8 without changing the pinned position', () => {
     useTypeBarWorkspace.getState().setPosition({ x: 50, y: 80 })
@@ -53,10 +58,18 @@ describe('workspace shortcuts', () => {
   })
   it('registers the handler while the workspace is mounted and removes it on unmount', () => {
     const hook = renderHook(() => useWorkspaceShortcuts())
-    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F7', code: 'F7', cancelable: true })) })
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F7', code: 'F7', cancelable: true }),
+      )
+    })
     expect(useKoharuStore.getState().panel).toBe('story')
     hook.unmount()
-    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F7', code: 'F7', cancelable: true })) })
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F7', code: 'F7', cancelable: true }),
+      )
+    })
     expect(useKoharuStore.getState().panel).toBe('story')
   })
   it('does not intercept composing or modified keys', () => {
@@ -66,8 +79,15 @@ describe('workspace shortcuts', () => {
     expect(useTypeBarWorkspace.getState().hidden).toBe(false)
   })
   it('clamps a pinned bar inside the viewport', () => {
-    expect(clampBarPosition({ x: 1000, y: -40 }, { width: 500, height: 400 }, { width: 200, height: 50 })).toEqual({ x: 292, y: 8 })
-    expect(clampBarPosition({ x: 50, y: 50 }, { width: 100, height: 40 }, { width: 200, height: 50 })).toEqual({ x: 0, y: 0 })
+    expect(
+      clampBarPosition(
+        { x: 1000, y: -40 },
+        { width: 500, height: 400 },
+        { width: 200, height: 50 },
+      ),
+    ).toEqual({ x: 292, y: 8 })
+    expect(
+      clampBarPosition({ x: 50, y: 50 }, { width: 100, height: 40 }, { width: 200, height: 50 }),
+    ).toEqual({ x: 0, y: 0 })
   })
 })
-

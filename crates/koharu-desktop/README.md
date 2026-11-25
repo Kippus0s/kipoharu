@@ -3,8 +3,7 @@
 Koharu's window and the commands its interface calls.
 
 One window shows the page on a native canvas and the React interface over it.
-The interface reads and edits the open project through the same protocol as
-the agent, and everything that changes the project tells the window. Where it
+The interface reads and edits the open project, and everything that changes the project tells the window. Where it
 follows an established product, it cites it; the links are under
 [Sources](#sources).
 
@@ -14,7 +13,7 @@ The canvas draws pages at display rate on the GPU, and the interface draws
 everything else in a web view. Pages are large and drawn at every zoom, so they
 draw on the process's one GPU, which exports draw with too, and the web view
 only composites over them. Neither waits on the other, and both show the project as it is,
-whoever changed it last: the user, a model's run, or an agent.
+whoever changed it last: the user or a model's run.
 
 ## 1. The window
 
@@ -32,8 +31,7 @@ needs to know where the panels are.
 
 ## 2. One protocol
 
-The interface edits the project the way the agent and an outside agent over MCP
-do: with the scene's own queries and edits, its undo and redo, and its history.
+The interface edits the project with the scene's own queries and edits, its undo and redo, and its history.
 
 - **Owners' types cross the boundary.** A model is `koharu-llm`'s, a run's event
   the pipeline's, the camera the canvas's, so there's no type of the desktop's
@@ -43,9 +41,6 @@ do: with the scene's own queries and edits, its undo and redo, and its history.
   the History panel reads in the app's language.
 - **Changes are told, not polled.** The open project tells every change,
   whichever writer made it, and the window redraws and tells the interface.
-- **Outside agents** reach the open project over MCP at `127.0.0.1:7878`, always
-  on, with the same tools as the agent panel. The port is fixed so a client's
-  settings stay valid from one launch to the next.
 
 ## 3. Projects
 
@@ -71,8 +66,7 @@ do: with the scene's own queries and edits, its undo and redo, and its history.
 
 - **Preferences** are `config.toml`'s sections, each handed to the component
   that owns it when saved.
-- **Runs.** The pipeline's runs and the agent's run on the open project are told
-  to the interface as they go; closing the project stops them.
+- **Runs.** The pipeline's runs are told to the interface as they go; closing the project stops them.
 - **One instance.** Opening Koharu again brings its window forward, and the
   window keeps its size, position, and maximized or full-screen state.
 - **Debug builds** listen for the DevTools protocol on port 4000, which UI

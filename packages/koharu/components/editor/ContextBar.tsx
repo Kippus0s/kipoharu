@@ -29,7 +29,10 @@ export function ContextBar({
   })
 
   const pinned = pinnedPosition != null
-  const [dimensions, setDimensions] = useState({ viewport: { width: 0, height: 0 }, bar: { width: 0, height: 0 } })
+  const [dimensions, setDimensions] = useState({
+    viewport: { width: 0, height: 0 },
+    bar: { width: 0, height: 0 },
+  })
   useLayoutEffect(() => {
     const element = refs.floating.current
     const parent = element?.parentElement
@@ -38,9 +41,12 @@ export function ContextBar({
       const viewport = { width: parent.clientWidth, height: parent.clientHeight }
       const bar = { width: element.offsetWidth, height: element.offsetHeight }
       setDimensions((previous) =>
-        previous.viewport.width === viewport.width && previous.viewport.height === viewport.height &&
-        previous.bar.width === bar.width && previous.bar.height === bar.height
-          ? previous : { viewport, bar },
+        previous.viewport.width === viewport.width &&
+        previous.viewport.height === viewport.height &&
+        previous.bar.width === bar.width &&
+        previous.bar.height === bar.height
+          ? previous
+          : { viewport, bar },
       )
     }
     measure()
@@ -49,7 +55,10 @@ export function ContextBar({
     observer.observe(element)
     return () => observer.disconnect()
   }, [pinned, refs])
-  const fixed = pinnedPosition == null ? null : clampBarPosition(pinnedPosition, dimensions.viewport, dimensions.bar)
+  const fixed =
+    pinnedPosition == null
+      ? null
+      : clampBarPosition(pinnedPosition, dimensions.viewport, dimensions.bar)
 
   // The selection as the canvas element shows it, the bar's parent.
   useLayoutEffect(() => {
@@ -76,7 +85,9 @@ export function ContextBar({
       )}
       style={{
         ...style,
-        ...(fixed ? { position: 'absolute' as const, left: fixed.x, top: fixed.y, transform: 'none' } : floatingStyles),
+        ...(fixed
+          ? { position: 'absolute' as const, left: fixed.x, top: fixed.y, transform: 'none' }
+          : floatingStyles),
         visibility: fixed || isPositioned ? 'visible' : 'hidden',
       }}
       {...props}

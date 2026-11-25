@@ -67,7 +67,8 @@ export function ColorSamplingProvider({ children }: { children: ReactNode }) {
       useKoharuStore.subscribe((state, previous) => {
         if (!state.picked || state.picked === previous.picked) return
         rememberColor(state.picked.color)
-        if (!complete(state.picked.color)) state.setBrush({ ...state.brush, color: state.picked.color })
+        if (!complete(state.picked.color))
+          state.setBrush({ ...state.brush, color: state.picked.color })
       }),
     [complete],
   )

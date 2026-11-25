@@ -221,7 +221,7 @@ export function useEditPreferences() {
   return { edit, flush: save.flush }
 }
 
-/** The models the translator and the agent can use. */
+/** The models the translator can use. */
 export function useModels() {
   return useQuery({ queryKey: modelsKey, queryFn: () => commands.listModels() })
 }

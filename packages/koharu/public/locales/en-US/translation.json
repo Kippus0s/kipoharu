@@ -17,27 +17,6 @@
     "stop": "Stop",
     "title": "Activity"
   },
-  "agent": {
-    "cancel": "Cancel",
-    "cancelled": "Cancelled.",
-    "emptyDescription": "Ask the agent to inspect, translate, edit, or process this project. It will view page images only when needed.",
-    "emptyTitle": "What should Koharu do?",
-    "failed": "The agent request failed.",
-    "loading": "Loading agent…",
-    "message": "Message Koharu Agent",
-    "model": "Model",
-    "newChat": "New chat",
-    "placeholder": "Ask Koharu to work on this project...",
-    "reasoning": "Reasoning",
-    "send": "Send",
-    "thinking": "Thinking...",
-    "thought": "Thought for {{seconds}}s",
-    "title": "Agent",
-    "toolFailed": "{{tool}} failed",
-    "used": "Used {{tool}}",
-    "using": "Using {{tool}}",
-    "working": "Working..."
-  },
   "canvas": {
     "empty": "Select a page to begin.",
     "notice": {

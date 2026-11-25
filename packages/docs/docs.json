@@ -118,10 +118,6 @@
             "pages": ["models/vision", "models/providers", "models/translation"]
           },
           {
-            "group": "Koharu Agent",
-            "pages": ["agent/setup", "agent/projects"]
-          },
-          {
             "group": "Development",
             "pages": [
               "development/contributing",
@@ -241,10 +237,6 @@
             "pages": ["ja/models/vision", "ja/models/providers", "ja/models/translation"]
           },
           {
-            "group": "Koharu Agent",
-            "pages": ["ja/agent/setup", "ja/agent/projects"]
-          },
-          {
             "group": "開発",
             "pages": [
               "ja/development/contributing",
@@ -362,10 +354,6 @@
           {
             "group": "模型与服务商",
             "pages": ["zh/models/vision", "zh/models/providers", "zh/models/translation"]
-          },
-          {
-            "group": "Koharu Agent",
-            "pages": ["zh/agent/setup", "zh/agent/projects"]
           },
           {
             "group": "开发",

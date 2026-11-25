@@ -81,11 +81,21 @@ describe('type bar font size', () => {
     async (fit) => {
       const edits = await chooseSize(fit, '36')
       await waitFor(() => expect(edits('set_style')).toHaveLength(1))
-      expect(edits('set_style')[0]).toEqual(expect.arrayContaining([
-        { op: 'update_layer', layer: 'balloon', patch: { translation: { style: { chars: { size: 36 } } } } },
-        { op: 'update_layer', layer: 'sign', patch: { translation: { style: { chars: { size: 36 } } } } },
-        { op: 'update_layer', layer: 'note', patch: { style: { chars: { size: 36 } } } },
-      ]))
+      expect(edits('set_style')[0]).toEqual(
+        expect.arrayContaining([
+          {
+            op: 'update_layer',
+            layer: 'balloon',
+            patch: { translation: { style: { chars: { size: 36 } } } },
+          },
+          {
+            op: 'update_layer',
+            layer: 'sign',
+            patch: { translation: { style: { chars: { size: 36 } } } },
+          },
+          { op: 'update_layer', layer: 'note', patch: { style: { chars: { size: 36 } } } },
+        ]),
+      )
       expect(edits()).toEqual([])
     },
   )
