@@ -192,6 +192,7 @@
       "toggle": "Shift+щелчок — показать или скрыть"
     },
     "show": "Показать {{name}}",
+    "showOriginal": "Показать оригинал",
     "sourceLabel": "Исходный текст {{name}}",
     "textLabel": "Текст {{name}}",
     "textName": "Текст {{index}}",

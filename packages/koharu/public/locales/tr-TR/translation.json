@@ -192,6 +192,7 @@
       "toggle": "Göstermek veya gizlemek için Shift+tıklayın"
     },
     "show": "{{name}} öğesini göster",
+    "showOriginal": "Orijinali göster",
     "sourceLabel": "{{name}} kaynak metni",
     "textLabel": "{{name}} metni",
     "textName": "Metin {{index}}",

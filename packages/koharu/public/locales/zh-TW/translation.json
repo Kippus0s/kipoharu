@@ -192,6 +192,7 @@
       "toggle": "按住 Shift 並按一下以顯示或隱藏"
     },
     "show": "顯示 {{name}}",
+    "showOriginal": "顯示原圖",
     "sourceLabel": "{{name}} 的原文",
     "textLabel": "{{name}} 的文字",
     "textName": "文字 {{index}}",

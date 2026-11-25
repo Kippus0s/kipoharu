@@ -53,6 +53,7 @@ pub struct Canvas {
     tool: Tool,
     brush: Brush,
     story: Story,
+    show_original: bool,
     /// Story's numbers laid out, by number and whether it's a sound
     /// effect's, until the colours change.
     numbers: RefCell<HashMap<(usize, bool), Label>>,
@@ -94,6 +95,7 @@ struct Look {
     tool: Tool,
     brush: Brush,
     story: Story,
+    show_original: bool,
     selection: Vec<LayerId>,
     hover: Option<LayerId>,
     anchors: Vec<usize>,
@@ -123,6 +125,7 @@ impl Canvas {
             tool: Tool::default(),
             brush: Brush::default(),
             story: Story::default(),
+            show_original: false,
             numbers: RefCell::new(HashMap::new()),
             selection: Selection::default(),
             area: None,
@@ -195,6 +198,17 @@ impl Canvas {
         self.story = story;
     }
 
+    /// Show only the page background without changing any layer visibility.
+    pub fn set_show_original(&mut self, show: bool) -> Vec<Effect> {
+        self.show_original = show;
+        self.cancel();
+        if show {
+            self.finish_typing()
+        } else {
+            Vec::new()
+        }
+    }
+
     pub fn camera(&self) -> TranslateScale {
         self.view.camera()
     }
@@ -260,7 +274,7 @@ impl Canvas {
     /// Moves the selection `by` page pixels with the Move tool, as an arrow
     /// key does; nothing with another tool. Returns the edit.
     pub fn nudge(&mut self, by: Vec2) -> Vec<Effect> {
-        if self.tool != Tool::Select {
+        if self.show_original || self.tool != Tool::Select {
             return Vec::new();
         }
         let effects = self
@@ -275,6 +289,9 @@ impl Canvas {
     /// a pointer reaches them, so the host's controls keep off those; `None`
     /// while nothing selected shows. While typing, the text as typed.
     pub fn selection_bounds(&self) -> Option<Rect> {
+        if self.show_original {
+            return None;
+        }
         if let Some(typing) = &self.typing {
             return Some(
                 typing
@@ -304,6 +321,9 @@ impl Canvas {
     /// page pixels, which the host places its fill's controls beside; `None`
     /// while there's none.
     pub fn area_bounds(&self) -> Option<Rect> {
+        if self.show_original {
+            return None;
+        }
         self.area.as_ref().map(Area::bounds)
     }
 
@@ -428,7 +448,10 @@ impl Canvas {
     /// Removes the direct selection tool's picked anchors from the selected
     /// text's frame; `None` with another tool or no anchor picked.
     fn delete_anchors(&mut self) -> Option<Vec<Effect>> {
-        if self.tool != Tool::DirectSelect || self.selection.anchors().is_empty() {
+        if self.show_original
+            || self.tool != Tool::DirectSelect
+            || self.selection.anchors().is_empty()
+        {
             return None;
         }
         let effects = tools::direct::delete(&self.context()?);
@@ -447,6 +470,13 @@ impl Canvas {
     pub fn cursor(&self) -> Option<CursorIcon> {
         if let Some(active) = &self.gesture {
             return active.gesture.cursor();
+        }
+        if self.show_original {
+            return if self.tool == Tool::Pan {
+                Some(CursorIcon::Grab)
+            } else {
+                Some(CursorIcon::Default)
+            };
         }
         if let (Some(typing), Some(sample)) = (&self.typing, self.pointer)
             && (typing.dragging.is_some()
@@ -541,7 +571,11 @@ impl Canvas {
             view: &self.view,
             snapshot: self.snapshot.as_ref()?,
             selection: &self.selection,
-            tool: self.tool,
+            tool: if self.show_original {
+                Tool::Pan
+            } else {
+                self.tool
+            },
             brush: self.brush,
             colors: self.colors,
             session: &self.session,
@@ -563,6 +597,14 @@ impl Canvas {
             // One gesture at a time: a second pointer waits.
             Some(_) => return Ok(Vec::new()),
             None => {}
+        }
+        if self.show_original
+            && !matches!(
+                (self.tool, button),
+                (_, Some(PointerButton::Auxiliary)) | (Tool::Pan, Some(PointerButton::Primary))
+            )
+        {
+            return Ok(Vec::new());
         }
         let primary = button == Some(PointerButton::Primary);
         let mut effects = Vec::new();
@@ -750,7 +792,9 @@ impl Canvas {
         let mut drawing = gpu.drawing(width as u16, height as u16);
         self.base(&mut drawing);
         self.page(&mut drawing)?;
-        self.overlay(&mut drawing)?;
+        if !self.show_original {
+            self.overlay(&mut drawing)?;
+        }
         let target = match self.target.take() {
             Some(target) if sized => target,
             _ => Target::new(&gpu, width, height)?,
@@ -775,6 +819,7 @@ impl Canvas {
             tool: self.tool,
             brush: self.brush,
             story: self.story,
+            show_original: self.show_original,
             selection: self.selection.ids().to_vec(),
             hover: self.selection.hover(),
             anchors: self.selection.anchors().to_vec(),
@@ -997,6 +1042,16 @@ impl Canvas {
         let Some(snapshot) = &self.snapshot else {
             return Ok(());
         };
+        if self.show_original {
+            if let Some(background) = snapshot.frame().background() {
+                background.cropped().paint(
+                    self.view.to_screen(),
+                    self.view.size().to_rect(),
+                    drawing,
+                )?;
+            }
+            return Ok(());
+        }
         let typed = self
             .typing
             .as_ref()

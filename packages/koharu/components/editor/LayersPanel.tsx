@@ -50,7 +50,7 @@ import {
 import { send, usePage } from '@/lib/queries'
 import { deleteLayers, moveLayers, setLocked, setPartVisibility, setVisibility } from '@/lib/scene'
 import { useKoharuStore } from '@/lib/store'
-import { type Layer, type LayerId } from '@koharu/ipc/protocol'
+import { commands, type Layer, type LayerId } from '@koharu/ipc/protocol'
 import { Button } from '@koharu/ui/components/button'
 import { ScrollArea } from '@koharu/ui/components/scroll-area'
 import { Slider } from '@koharu/ui/components/slider'
@@ -83,6 +83,13 @@ export function LayersPanel() {
     selected.length === 1 ? (selected[0] ?? null) : null,
   )
   const anchor = useRef<LayerId | null>(null)
+  const [showOriginal, setShowOriginal] = useState(false)
+
+  useEffect(() => {
+    if (!showOriginal) return
+    send(commands.setShowOriginal, true)
+    return () => send(commands.setShowOriginal, false)
+  }, [showOriginal])
 
   useEffect(() => {
     setExpandedLayer(selected.length === 1 ? (selected[0] ?? null) : null)
@@ -202,6 +209,18 @@ export function LayersPanel() {
 
   return (
     <div className='flex min-h-0 flex-1 flex-col'>
+      <div className='shrink-0 border-b border-border/80 p-1.5'>
+        <Button
+          variant={showOriginal ? 'secondary' : 'ghost'}
+          size='sm'
+          className='w-full justify-start'
+          aria-pressed={showOriginal}
+          onClick={() => setShowOriginal((shown) => !shown)}
+        >
+          {showOriginal ? <EyeOff /> : <Eye />}
+          {t('layers.showOriginal')}
+        </Button>
+      </div>
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}

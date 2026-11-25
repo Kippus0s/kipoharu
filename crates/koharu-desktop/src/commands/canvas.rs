@@ -44,6 +44,13 @@ pub fn set_story(app: State<'_, Arc<App>>, story: Story) {
     app.screen.set_story(story);
 }
 
+/// Temporarily shows only the original page image.
+#[tauri::command]
+#[specta::specta]
+pub fn set_show_original(app: State<'_, Arc<App>>, show: bool) {
+    app.screen.set_show_original(Arc::clone(&app), show);
+}
+
 /// Fits the page in the canvas, as the fit shortcut does.
 #[tauri::command]
 #[specta::specta]

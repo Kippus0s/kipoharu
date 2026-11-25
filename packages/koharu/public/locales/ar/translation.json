@@ -192,6 +192,7 @@
       "toggle": "Shift+نقر للإظهار أو الإخفاء"
     },
     "show": "إظهار {{name}}",
+    "showOriginal": "إظهار الأصل",
     "sourceLabel": "النص المصدر لـ {{name}}",
     "textLabel": "نص {{name}}",
     "textName": "نص {{index}}",

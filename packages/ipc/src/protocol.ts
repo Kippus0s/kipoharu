@@ -945,6 +945,8 @@ setBrush: (brush: Brush) => runner("set_brush", (options) => invoke<null>("set_b
 setColors: (colors: Colors) => runner("set_colors", (options) => invoke<null>("set_colors", { colors }, options)),
 /** Whether the Story panel shows, and the text whose entry the pointer is on, which the canvas numbers and outlines. */
 setStory: (story: Story) => runner("set_story", (options) => invoke<null>("set_story", { story }, options)),
+/** Temporarily shows only the original page image. */
+setShowOriginal: (show: boolean) => runner("set_show_original", (options) => invoke<null>("set_show_original", { show }, options)),
 /** The type bar's character settings for the text being typed: the selected characters take them, or at a caret the next ones typed. */
 styleTyping: (patch: CharStyle) => runner("style_typing", (options) => invoke<null>("style_typing", { patch }, options)),
 /** Fits the page in the canvas, as the fit shortcut does. */

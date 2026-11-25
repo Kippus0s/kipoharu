@@ -225,6 +225,14 @@ impl Screen {
         });
     }
 
+    pub fn set_show_original(&self, app: Arc<App>, show: bool) {
+        self.answer(app, move |main| {
+            main.canvas
+                .as_mut()
+                .map_or_else(Vec::new, |canvas| canvas.set_show_original(show))
+        });
+    }
+
     /// Fits the page in the canvas.
     pub fn fit(&self) {
         self.change(|main| {

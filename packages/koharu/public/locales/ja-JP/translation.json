@@ -192,6 +192,7 @@
       "toggle": "Shift+クリックで表示/非表示"
     },
     "show": "{{name}}を表示",
+    "showOriginal": "原画像を表示",
     "sourceLabel": "{{name}}の原文",
     "textLabel": "{{name}}のテキスト",
     "textName": "テキスト {{index}}",

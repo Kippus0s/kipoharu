@@ -192,6 +192,7 @@
       "toggle": "Mayús+clic para mostrar u ocultar"
     },
     "show": "Mostrar {{name}}",
+    "showOriginal": "Mostrar original",
     "sourceLabel": "Texto original de {{name}}",
     "textLabel": "Texto de {{name}}",
     "textName": "Texto {{index}}",

@@ -192,6 +192,7 @@
       "toggle": "揿牢 Shift 点一记显示或者隐藏"
     },
     "show": "显示 {{name}}",
+    "showOriginal": "显示原图",
     "sourceLabel": "{{name}} 个原文",
     "textLabel": "{{name}} 个文本",
     "textName": "文本 {{index}}",

@@ -192,6 +192,7 @@
       "toggle": "Shift+클릭하여 표시하거나 숨기기"
     },
     "show": "{{name}} 표시",
+    "showOriginal": "원본 보기",
     "sourceLabel": "{{name}} 원문",
     "textLabel": "{{name}} 텍스트",
     "textName": "텍스트 {{index}}",
