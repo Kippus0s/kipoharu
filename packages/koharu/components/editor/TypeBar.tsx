@@ -1,7 +1,7 @@
 'use client'
 
 import { useMutation } from '@tanstack/react-query'
-import { AlignCenter, AlignLeft, AlignRight, ChevronDown, Italic } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, ChevronDown, Italic } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
@@ -20,7 +20,7 @@ import {
 } from '@/lib/document'
 import { readPage, send, useFonts, useOnlineFonts, usePage, usePreferences } from '@/lib/queries'
 import { setFit as setFrameFit, setStyle, updateLayer } from '@/lib/scene'
-import { shortcuts } from '@/lib/shortcuts'
+import { shortcutLabel, shortcuts } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
 import {
   commands,
@@ -177,6 +177,23 @@ export function TypeBar() {
   const italic = Boolean(chars.italic) && italics
   const weight = chars.weight ?? 400
   const weights = usableFontWeights(selectedFamily, italic)
+  // Only real faces (or the weight axis of a variable face) in the current style.
+  const styleAvailable = selectedFamily?.faces.some((face) => face.italic === italic)
+  const boldWeights = styleAvailable ? weights.filter((value) => value >= 700) : []
+  const regularWeights = styleAvailable ? weights.filter((value) => value < 700) : []
+  const bold = !mixed.has('weight') && weight >= 700
+  const canBold = bold ? regularWeights.length > 0 : boldWeights.length > 0
+  const changeBold = (next: boolean) => {
+    if (!canBold) return
+    applyChars({ weight: nearestFontWeight(next ? boldWeights : regularWeights, next ? 700 : 400) })
+  }
+  const changeItalic = (next: boolean) => {
+    if (!italics && !italic) return
+    applyChars({
+      italic: next,
+      weight: nearestFontWeight(usableFontWeights(selectedFamily, next), weight),
+    })
+  }
   const size = mixed.has('size') || mixedFit ? null : Math.round((chars.size ?? 24) * 100) / 100
   const strokeWidth = chars.stroke_width ?? 0
   const stroke = chars.stroke ?? null
@@ -224,6 +241,17 @@ export function TypeBar() {
   const selectionBounds = useKoharuStore((state) => state.selectionBounds)
   // A new text being typed has no layer yet for its paragraph to go to.
   const paragraph = targets.length > 0
+  const formattingShortcut = {
+    enabled: Boolean(selectionBounds && (targets.length || typing) && TOOLS.includes(tool)),
+    preventDefault: true,
+    useKey: true,
+  }
+  useHotkeys(shortcuts.bold, (event) => {
+    if (!event.repeat) changeBold(!bold)
+  }, formattingShortcut)
+  useHotkeys(shortcuts.italic, (event) => {
+    if (!event.repeat) changeItalic(!italic)
+  }, formattingShortcut)
   if (!selectionBounds || !(targets.length || typing) || !TOOLS.includes(tool)) return null
 
   // One row, as Photoshop's type options bar, at the user's choice: the face, its size, and its
@@ -273,18 +301,37 @@ export function TypeBar() {
               className={toggle}
               disabled={!italics && !italic}
               pressed={italic}
-              onPressedChange={(nextItalic) =>
-                applyChars({
-                  italic: nextItalic,
-                  weight: nearestFontWeight(usableFontWeights(selectedFamily, nextItalic), weight),
-                })
-              }
+              onPressedChange={changeItalic}
             />
           }
         >
           <Italic className='size-3.5' />
         </TooltipTrigger>
-        <TooltipContent>{t('inspector.fontStyles.italic')}</TooltipContent>
+        <TooltipContent>
+          {t('inspector.fontStyles.italic')}
+          <span className='opacity-60'>{shortcutLabel(shortcuts.italic)}</span>
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Toggle
+              variant='outline'
+              size='sm'
+              aria-label={t('inspector.fontStyles.bold')}
+              className={toggle}
+              disabled={!canBold}
+              pressed={bold}
+              onPressedChange={changeBold}
+            />
+          }
+        >
+          <Bold className='size-3.5' />
+        </TooltipTrigger>
+        <TooltipContent>
+          {t('inspector.fontStyles.bold')}
+          <span className='opacity-60'>{shortcutLabel(shortcuts.bold)}</span>
+        </TooltipContent>
       </Tooltip>
       <div className='w-15'>
         <PresetField

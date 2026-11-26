@@ -160,6 +160,7 @@
     "font": "Font",
     "fontSize": "Font size",
     "fontStyles": {
+      "bold": "Bold",
       "italic": "Italic",
       "oblique": "Oblique"
     },

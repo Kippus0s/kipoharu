@@ -203,7 +203,8 @@ export function CanvasWorkspace() {
   })
   useHotkeys(
     Object.values(toolKeys),
-    (_, { keys }) => {
+    (event, { keys }) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
       const tool = tools.find((tool) => toolKeys[tool] === keys?.[0])
       if (tool) setTool(tool)
     },

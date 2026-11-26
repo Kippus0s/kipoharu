@@ -143,6 +143,7 @@
     "font": "الخط",
     "fontSize": "حجم الخط",
     "fontStyles": {
+      "bold": "عريض",
       "italic": "مائل",
       "oblique": "منحرف"
     },

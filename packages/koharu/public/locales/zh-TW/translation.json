@@ -143,6 +143,7 @@
     "font": "字體",
     "fontSize": "字型大小",
     "fontStyles": {
+      "bold": "粗體",
       "italic": "斜體",
       "oblique": "傾斜"
     },

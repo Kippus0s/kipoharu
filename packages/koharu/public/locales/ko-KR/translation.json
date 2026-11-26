@@ -143,6 +143,7 @@
     "font": "글꼴",
     "fontSize": "글꼴 크기",
     "fontStyles": {
+      "bold": "굵게",
       "italic": "기울임꼴",
       "oblique": "기울임"
     },

@@ -139,14 +139,14 @@ export function TitleBar() {
                     <Fragment key={format}>
                       <MenubarItem
                         disabled={exporting}
-                        onClick={() => exportProject([format], psdLabels, null)}
+                        onClick={() => exportProject([format], psdLabels, null, false)}
                       >
                         {format.toUpperCase()}…
                       </MenubarItem>
                       <MenubarItem
                         disabled={exporting || !activePage}
                         onClick={() => {
-                          if (activePage) exportProject([format], psdLabels, [activePage])
+                          if (activePage) exportProject([format], psdLabels, [activePage], true)
                         }}
                       >
                         {t('menu.exportSelectedPage', { format: format.toUpperCase() })}
@@ -359,6 +359,7 @@ export function TitleBar() {
                   batchFormats,
                   psdLabels,
                   validBatchPages.map((candidate) => candidate.id),
+                  false,
                 )
               }}
             >

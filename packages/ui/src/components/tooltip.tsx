@@ -1,19 +1,85 @@
 'use client'
 
 import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 
 import { cn } from '@koharu/ui/lib/utils'
 
-function TooltipProvider({ delay = 0, ...props }: TooltipPrimitive.Provider.Props) {
-  return <TooltipPrimitive.Provider data-slot='tooltip-provider' delay={delay} {...props} />
+const RearmTooltip = createContext<((trigger: HTMLElement) => void) | undefined>(undefined)
+
+function TooltipProvider({ delay = 350, ...props }: TooltipPrimitive.Provider.Props) {
+  return <TooltipPrimitive.Provider data-slot='tooltip-provider' delay={delay} closeDelay={100} {...props} />
 }
 
-function Tooltip({ ...props }: TooltipPrimitive.Root.Props) {
-  return <TooltipPrimitive.Root data-slot='tooltip' {...props} />
+function Tooltip({ defaultOpen, open: controlledOpen, onOpenChange, ...props }: TooltipPrimitive.Root.Props) {
+  const [open, setOpen] = useState(defaultOpen ?? false)
+  const blocked = useRef(false)
+  const trigger = useRef<HTMLElement | null>(null)
+  // All current tooltips are uncontrolled by their callers. Preserve Base UI's
+  // controlled API for callers that explicitly own the open state.
+  const visible = controlledOpen ?? open
+  useEffect(() => {
+    if (!visible || controlledOpen !== undefined) return
+    const dismiss = () => {
+      blocked.current = true
+      setOpen(false)
+    }
+    const timer = window.setTimeout(dismiss, 3000)
+    const moved = (event: PointerEvent) => {
+      if (trigger.current && event.target instanceof Node && !trigger.current.contains(event.target)) {
+        dismiss()
+      }
+    }
+    window.addEventListener('pointermove', moved, true)
+    window.addEventListener('pointerdown', dismiss, true)
+    window.addEventListener('blur', dismiss)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('pointermove', moved, true)
+      window.removeEventListener('pointerdown', dismiss, true)
+      window.removeEventListener('blur', dismiss)
+    }
+  }, [visible, controlledOpen])
+  return (
+    <RearmTooltip.Provider value={(element) => {
+      trigger.current = element
+      blocked.current = false
+    }}>
+      <TooltipPrimitive.Root
+        data-slot='tooltip'
+        {...props}
+        disableHoverablePopup
+        open={visible}
+        onOpenChange={(next, details) => {
+          if (next && blocked.current && controlledOpen === undefined) {
+            details.cancel()
+            return
+          }
+          onOpenChange?.(next, details)
+          if (!details.isCanceled) setOpen(next)
+        }}
+      />
+    </RearmTooltip.Provider>
+  )
 }
 
-function TooltipTrigger({ ...props }: TooltipPrimitive.Trigger.Props) {
-  return <TooltipPrimitive.Trigger data-slot='tooltip-trigger' {...props} />
+function TooltipTrigger({ onPointerEnter, onFocus, ...props }: TooltipPrimitive.Trigger.Props) {
+  const rearm = useContext(RearmTooltip)
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot='tooltip-trigger'
+      {...props}
+      onPointerEnter={(event) => {
+        rearm?.(event.currentTarget)
+        onPointerEnter?.(event)
+      }}
+      onFocus={(event) => {
+        // Clicking an already-hovered control must not rearm an expired tip.
+        if (event.currentTarget.matches(':focus-visible')) rearm?.(event.currentTarget)
+        onFocus?.(event)
+      }}
+    />
+  )
 }
 
 function TooltipContent({
@@ -33,12 +99,12 @@ function TooltipContent({
         alignOffset={alignOffset}
         side={side}
         sideOffset={sideOffset}
-        className='isolate z-50'
+        className='pointer-events-none isolate z-50'
       >
         <TooltipPrimitive.Popup
           data-slot='tooltip-content'
           className={cn(
-            'z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
+            'pointer-events-none z-50 inline-flex w-fit max-w-xs origin-(--transform-origin) items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs text-background has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95',
             className,
           )}
           {...props}

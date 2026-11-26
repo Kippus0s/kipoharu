@@ -937,7 +937,7 @@ getFontPreview: (family: string) => runner("get_font_preview", (options) => invo
 /** Picks files or a folder and adds their pages after the project's last: the files in name order, numbers by value, an archive's or a PDF's own pages in theirs. */
 import: (source: ImportSource) => runner("import", (options) => invoke<null>("import", { source }, options)),
 /** Picks a destination and exports the requested formats. `pages` is null for the entire project; otherwise only the named pages are written, in project order. `labels` names a PSD's unnamed layers in the interface's language. */
-export: (formats: ExportFormat[], labels: Labels, pages: PageId[] | null) => runner("export", (options) => invoke<null>("export", { formats, labels, pages }, options)),
+export: (formats: ExportFormat[], labels: Labels, pages: PageId[] | null, singlePage: boolean) => runner("export", (options) => invoke<null>("export", { formats, labels, pages, singlePage }, options)),
 /** The canvas element's rectangle, in CSS pixels from the window's corner. */
 setViewport: (x: number, y: number, width: number, height: number) => runner("set_viewport", (options) => invoke<null>("set_viewport", { x, y, width, height }, options)),
 setTool: (tool: Tool) => runner("set_tool", (options) => invoke<null>("set_tool", { tool }, options)),

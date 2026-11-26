@@ -143,6 +143,7 @@
     "font": "フォント",
     "fontSize": "フォントサイズ",
     "fontStyles": {
+      "bold": "太字",
       "italic": "斜体",
       "oblique": "オブリーク"
     },
