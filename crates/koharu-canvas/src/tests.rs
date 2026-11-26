@@ -1169,6 +1169,15 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
     let sizes: Vec<_> = ids.iter().map(|id| rendered_size(&fixture, *id)).collect();
     assert!((sizes[0] - 12.0).abs() > 1.0);
     assert!((sizes[1] - 120.0).abs() > 1.0);
+    let scales = fixture.canvas.selection_scales();
+    assert_eq!(scales.len(), 2);
+    for (index, nominal) in [12.0, 120.0].into_iter().enumerate() {
+        let (_, scale) = scales
+            .iter()
+            .find(|(id, _)| *id == ids[index])
+            .expect("scale");
+        assert!((sizes[index] - nominal * f64::from(*scale)).abs() < 0.001);
+    }
     let camera = fixture.canvas.camera();
     let effects = fixture
         .canvas
@@ -2289,6 +2298,7 @@ fn styling_a_typed_selection_marks_those_characters_and_a_caret_holds_it() {
         (typing.chars.weight, typing.chars.size),
         (Some(700), Some(40.0))
     );
+    assert_eq!(typing.scale, 1.0);
     // All of it differs in weight, and shares its size.
     fixture
         .canvas

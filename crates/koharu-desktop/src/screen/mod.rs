@@ -81,11 +81,12 @@ fn change(change: impl FnOnce(&mut Main)) {
             main.handle.clone(),
             main.moved(),
             main.selection_moved(),
+            main.selection_scales_changed(),
             main.area_moved(),
             main.typing_moved(),
         )
     });
-    let Some((handle, camera, selection, area, typing)) = moved else {
+    let Some((handle, camera, selection, scales, area, typing)) = moved else {
         return;
     };
     if let Some(camera) = camera {
@@ -93,6 +94,9 @@ fn change(change: impl FnOnce(&mut Main)) {
     }
     if let Some(bounds) = selection {
         events::SELECTION_BOUNDS.tell(&handle, bounds);
+    }
+    if let Some(scales) = scales {
+        events::SELECTION_SCALES.tell(&handle, scales);
     }
     if let Some(bounds) = area {
         events::AREA.tell(&handle, bounds);
@@ -325,6 +329,8 @@ struct Main {
     camera: Option<Camera>,
     /// Where the selection lies on the page, as the interface last heard it.
     selection: Option<Bounds>,
+    /// Only read selected layouts again after a new snapshot or selection.
+    selection_layout: Option<(PageId, u64, Vec<LayerId>)>,
     /// Where the canvas's area lies on the page, as the interface last heard
     /// it.
     area: Option<Bounds>,
@@ -416,6 +422,8 @@ impl Main {
         });
         if self.canvas.is_none() {
             self.camera = None;
+        } else {
+            self.selection_layout = None;
         }
     }
 
@@ -448,6 +456,24 @@ impl Main {
             self.selection = bounds;
             bounds
         })
+    }
+
+    /// The scales change only with the snapshot or selection, not pointer motion or zoom.
+    fn selection_scales_changed(&mut self) -> Option<Vec<(LayerId, f32)>> {
+        let key = self.canvas.as_ref().and_then(Canvas::selection_layout_key);
+        let previous = self
+            .selection_layout
+            .as_ref()
+            .map(|(page, generation, ids)| (*page, *generation, ids.as_slice()));
+        if key == previous {
+            return None;
+        }
+        self.selection_layout = key.map(|(page, generation, ids)| (page, generation, ids.to_vec()));
+        Some(
+            self.canvas
+                .as_ref()
+                .map_or_else(Vec::new, Canvas::selection_scales),
+        )
     }
 
     /// Where the canvas's area lies on the page, if that moved since the
@@ -790,6 +816,7 @@ pub fn open(
         settings: Settings::default(),
         camera: None,
         selection: None,
+        selection_layout: None,
         area: None,
         typed: None,
         caret: None,

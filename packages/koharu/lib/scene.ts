@@ -98,14 +98,18 @@ export function setSourceText(layer: LayerId, text: string): Promise<Change> {
 /** Merges `style`, a `TextStyle` patch, into each layer's lettering: a text's own style, and a
  * block's translation's, which is what it draws. A character value it sets is every character's,
  * as Photoshop styles a selected type layer, so the characters marked with their own drop it. */
-export function setStyle(layers: Layer[], style: TextStyle): Promise<Change> {
-  const keys = Object.keys(style.chars ?? {}) as (keyof CharStyle)[]
+export function setStyle(
+  layers: Layer[],
+  style: TextStyle | ((layer: Layer) => TextStyle),
+): Promise<Change> {
   return edit(
     'set_style',
     layers
       .filter((layer) => isTextLayer(layer) || isBlockLayer(layer))
       .flatMap((layer): Op[] => {
-        const patch: Value = isBlockLayer(layer) ? { translation: { style } } : { style }
+        const local = typeof style === 'function' ? style(layer) : style
+        const keys = Object.keys(local.chars ?? {}) as (keyof CharStyle)[]
+        const patch: Value = isBlockLayer(layer) ? { translation: { style: local } } : { style: local }
         const restyle: Op = { op: 'update_layer', layer: layer.id, patch }
         const spans = letteringOf(layer)?.content ?? []
         const marked = spans.some((span) => keys.some((key) => span.attributes?.[key] != null))

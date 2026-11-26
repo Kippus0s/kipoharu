@@ -271,6 +271,48 @@ impl Canvas {
         self.selection.ids()
     }
 
+    /// Identifies the snapshot and selection for the host's type bar.
+    pub fn selection_layout_key(&self) -> Option<(PageId, u64, &[LayerId])> {
+        Some((
+            self.snapshot.as_ref()?.page().id,
+            self.generation,
+            self.selection.ids(),
+        ))
+    }
+
+    /// The selected text layers' fitting scales, from the already rendered frame.
+    /// A container selection follows its text and block children, as the type bar does.
+    pub fn selection_scales(&self) -> Vec<(LayerId, f32)> {
+        let Some(snapshot) = &self.snapshot else {
+            return Vec::new();
+        };
+        fn collect(layer: &Layer, frame: &Frame, scales: &mut Vec<(LayerId, f32)>) {
+            let drawn = match &layer.content {
+                Content::Group(_) | Content::Panel(_) | Content::Balloon(_) => {
+                    for child in &layer.children {
+                        collect(child, frame, scales);
+                    }
+                    return;
+                }
+                Content::Text(_) => frame.layer(layer.id),
+                Content::Block(block) if block.translation.is_some() => frame.translation(layer.id),
+                _ => return,
+            };
+            if !scales.iter().any(|(id, _)| *id == layer.id) {
+                // An empty text has no layout and no fitted glyphs.
+                let scale = drawn.and_then(|drawn| drawn.text()).map_or(1.0, |text| text.scale);
+                scales.push((layer.id, scale));
+            }
+        }
+        let mut scales = Vec::new();
+        for id in self.selection.ids() {
+            if let Some(layer) = snapshot.layer(*id) {
+                collect(layer, snapshot.frame(), &mut scales);
+            }
+        }
+        scales
+    }
+
     /// Moves the selection `by` page pixels with the Move tool, as an arrow
     /// key does; nothing with another tool. Returns the edit.
     pub fn nudge(&mut self, by: Vec2) -> Vec<Effect> {

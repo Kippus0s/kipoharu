@@ -30,6 +30,8 @@ pub struct Typed {
     /// The values the selected characters don't share, which `chars` leaves
     /// empty.
     pub mixed: Vec<CharKey>,
+    /// The live lettering layout's scale, for the type bar.
+    pub scale: f32,
 }
 
 /// What `styles`, each a character's whole style, share, and the values

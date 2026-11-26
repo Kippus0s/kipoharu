@@ -119,3 +119,66 @@ describe('type bar font size', () => {
     )
   })
 })
+
+/** The native frame has already fitted a nominal 12 px text at 2.5×. */
+function fittedTypeBar(typing = false) {
+  const layer: Layer = {
+    ...base,
+    id: 'fitted',
+    name: 'fitted',
+    kind: 'text',
+    content,
+    frame: { box: { bounds, fit: 'best' } },
+    style: { chars: { size: 12, stroke_width: 3, stroke: [1, 1, 1, 1] } },
+  }
+  queryClient.setQueryData(pageKey, { id: 'p', size: bounds, background: null, layers: [layer] })
+  queryClient.setQueryData(preferencesKey, { renderer: {} })
+  queryClient.setQueryData(fontsKey, [])
+  useKoharuStore.setState({
+    selectedLayers: [layer.id],
+    selectionBounds: bounds,
+    selectionScales: [[layer.id, 2.5]],
+    // The live text may have a different fitted scale from the committed snapshot.
+    typing: typing
+      ? { layer: layer.id, chars: layer.style!.chars!, mixed: [], scale: 2 }
+      : null,
+  })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <TypeBar />
+    </QueryClientProvider>,
+  )
+}
+
+describe('rendered type bar values', () => {
+  it('shows the fitted size and outline width, and writes the nominal width on editing', async () => {
+    const edit = vi.spyOn(commands, 'edit').mockResolvedValue({
+      revision: '2', created: [], layers: [],
+      pages: { added: [], removed: [], changed: [], reordered: false },
+      history: { current: 1, steps: [] },
+    } satisfies Change)
+    fittedTypeBar()
+    expect(screen.getByTestId('type-size')).toHaveAttribute('placeholder', '30 (Auto)')
+    expect(screen.getByLabelText('Border width')).toHaveDisplayValue('7.5')
+    fireEvent.click(screen.getByLabelText('Choose border width'))
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '3' }))
+    await waitFor(() => expect(edit).toHaveBeenCalledWith({
+      label: 'set_style',
+      ops: [{ op: 'update_layer', layer: 'fitted', patch: {
+        style: { chars: { stroke_width: 1.2, stroke: [1, 1, 1, 1] } },
+      } }],
+    }))
+  })
+
+  it('uses the live canvas layout rather than the committed snapshot while typing', async () => {
+    const style = vi.spyOn(commands, 'styleTyping').mockResolvedValue(null)
+    fittedTypeBar(true)
+    expect(screen.getByTestId('type-size')).toHaveAttribute('placeholder', '24 (Auto)')
+    expect(screen.getByLabelText('Border width')).toHaveDisplayValue('6')
+    fireEvent.click(screen.getByLabelText('Choose border width'))
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '3' }))
+    await waitFor(() => expect(style).toHaveBeenCalledWith({
+      stroke_width: 1.5, stroke: [1, 1, 1, 1],
+    }))
+  })
+})

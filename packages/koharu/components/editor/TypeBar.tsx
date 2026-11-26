@@ -83,11 +83,17 @@ export function TypeBar() {
   const current = targets[0]
   const lettering: Text | null = current ? letteringOf(current) : null
   const typing = useKoharuStore((state) => state.typing)
+  const selectionScales = useKoharuStore((state) => state.selectionScales)
+  const scales = useMemo(() => new Map(selectionScales), [selectionScales])
   const favorites = useFavoriteFonts((state) => state.favorites)
   // The newest style asked for shows on the first target until the page is read with it.
   const restyle = useMutation({
-    mutationFn: (edit: { layer: LayerId; style: TextStyle; targets: Layer[]; patch: TextStyle }) =>
-      setStyle(edit.targets, edit.patch),
+    mutationFn: (edit: {
+      layer: LayerId
+      style: TextStyle
+      targets: Layer[]
+      patch: TextStyle | ((layer: Layer) => TextStyle)
+    }) => setStyle(edit.targets, edit.patch),
     onSettled: readPage,
   })
 
@@ -129,11 +135,12 @@ export function TypeBar() {
     canFit && frames.every((entry) => entry?.fit === frames[0]?.fit) ? (frames[0]?.fit ?? '') : ''
 
   /** Merges `patch` into each target's style, shown at once on the first. */
-  const apply = (patch: TextStyle) => {
+  const apply = (patch: TextStyle | ((layer: Layer) => TextStyle)) => {
     if (!current) return
+    const local = typeof patch === 'function' ? patch(current) : patch
     restyle.mutate({
       layer: current.id,
-      style: { ...style, ...patch, chars: { ...chars, ...patch.chars } },
+      style: { ...style, ...local, chars: { ...chars, ...local.chars } },
       targets,
       patch,
     })
@@ -196,9 +203,44 @@ export function TypeBar() {
       weight: nearestFontWeight(usableFontWeights(selectedFamily, next), weight),
     })
   }
-  const size = mixed.has('size') || mixedFit ? null : Math.round((chars.size ?? 24) * 100) / 100
+  // Fitting scales both sizes and strokes. Read the actual layout, never the canvas zoom.
+  const renderedNumber = (key: 'size' | 'stroke_width', fallback: number): number | null => {
+    const round = (value: number) => Math.round(value * 100) / 100
+    if (typing) return mixed.has(key) ? null : round((chars[key] ?? fallback) * typing.scale)
+    const values = targets.flatMap((layer) => {
+      const text = letteringOf(layer)
+      if (!text) return []
+      const local = sharedChars([text])
+      const nominal = layer.id === current?.id ? drafted?.chars?.[key] : undefined
+      if (nominal === undefined && local.mixed.includes(key)) return [null]
+      const scale = scales.get(layer.id)
+      const frame = text.frame
+      const fit = typeof frame === 'object' ? (frame.box ?? frame.path)?.fit : undefined
+      // Don't present a nominal value as fitted while the selection event is in flight.
+      if (scale === undefined && (fit === 'best' || fit === 'shrink')) return [null]
+      return [round((nominal ?? local.chars[key] ?? fallback) * (scale ?? 1))]
+    })
+    if (values.length === 0) return fallback
+    const first = values[0]
+    return first != null && values.every((value) => value === first) ? first : null
+  }
+  const size = autoFit
+    ? renderedNumber('size', 24)
+    : mixed.has('size') || mixedFit
+      ? null
+      : Math.round((chars.size ?? 24) * 100) / 100
   const strokeWidth = chars.stroke_width ?? 0
+  const effectiveStrokeWidth = renderedNumber('stroke_width', 0)
   const stroke = chars.stroke ?? null
+  // The field displays rendered pixels; convert back to each text's nominal style on edit.
+  const changeStrokeWidth = (width: number) => {
+    const patch = (scale: number): CharStyle => ({
+      stroke_width: width / scale,
+      stroke: stroke ?? toRgba(WHITE),
+    })
+    if (typing) applyChars(patch(typing.scale))
+    else apply((layer) => ({ chars: patch(scales.get(layer.id) ?? 1) }))
+  }
   const strokeEnabled = stroke !== null && stroke[3] > 0 && strokeWidth > 0
   const direction: Direction = lettering?.direction ?? 'horizontal'
   const align: Align = style.align ?? (direction === 'vertical' ? 'start' : 'center')
@@ -335,7 +377,7 @@ export function TypeBar() {
           <span className='opacity-60'>{shortcutLabel(shortcuts.bold)}</span>
         </TooltipContent>
       </Tooltip>
-      <div className='w-15'>
+      <div className={autoFit ? 'w-25' : 'w-15'}>
         <PresetField
           name='font-size'
           testId='type-size'
@@ -482,13 +524,13 @@ export function TypeBar() {
         <div className='w-12'>
           <PresetField
             name='border-width'
-            value={strokeWidth > 0 ? strokeWidth : 1.5}
-            min={0.5}
-            max={32}
+            value={effectiveStrokeWidth === 0 ? 1.5 : effectiveStrokeWidth}
+            min={Math.min(0.5, effectiveStrokeWidth || 0.5)}
+            max={Math.max(32, effectiveStrokeWidth ?? 0)}
             presets={borderWidths}
             label={t('inspector.borderWidth')}
             menuLabel={t('inspector.chooseBorderWidth')}
-            onChange={(next) => applyChars({ stroke_width: next, stroke: stroke ?? toRgba(WHITE) })}
+            onChange={changeStrokeWidth}
           />
         </div>
       </div>
@@ -579,7 +621,7 @@ const borderWidths = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 32]
 /** A number typed in, in half steps, or picked from `presets` behind the arrow beside it, as
  * Photoshop's options bar sets a font size. A typed number applies on Enter or on leaving the
  * field, and one outside `min` to `max` goes back. `auto` is a choice above the presets that the
- * field shows by its label. */
+ * field shows by its label and, when available, the rendered size. */
 function PresetField({
   name,
   value,
@@ -620,7 +662,7 @@ function PresetField({
       return
     }
     const preset = Number(choice)
-    setDraft(preset)
+    setDraft(auto?.active ? null : preset)
     onChange(preset)
   }
 
@@ -630,8 +672,10 @@ function PresetField({
     'pr-2 data-checked:bg-accent data-checked:text-accent-foreground [&>[data-slot=dropdown-menu-radio-item-indicator]]:hidden'
 
   const commit = (next: number | null) => {
-    if (next !== null && next >= min && next <= max) onChange(next)
-    else setDraft(shown)
+    if (next !== null && next >= min && next <= max) {
+      if (next !== shown) onChange(next)
+      if (auto?.active) setDraft(null)
+    } else setDraft(shown)
   }
 
   return (
@@ -651,7 +695,9 @@ function PresetField({
           <NumberFieldInput
             data-testid={testId}
             aria-label={label}
-            placeholder={auto?.active ? auto.label : undefined}
+            placeholder={
+              auto?.active ? (value === null ? auto.label : `${value} (${auto.label})`) : undefined
+            }
             className='px-1 text-left text-ellipsis'
           />
           <DropdownMenu>

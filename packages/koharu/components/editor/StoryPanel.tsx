@@ -44,6 +44,7 @@ export function StoryPanel() {
   const project = useProject().data
   const pages = project?.pages ?? []
   const shown = project?.page ?? null
+  const active = useKoharuStore((state) => state.panel === 'story')
   const list = useRef<HTMLDivElement>(null)
   // The page holding the focused field, kept mounted while it scrolls away, so an edit in
   // progress, or a composition, isn't lost with its field.
@@ -68,10 +69,10 @@ export function StoryPanel() {
   })
 
   const shownIndex = pages.findIndex((page) => page.id === shown)
-  useEffect(() => {
-    if (shownIndex < 0 || list.current?.contains(document.activeElement)) return
+  useLayoutEffect(() => {
+    if (!active || shownIndex < 0 || list.current?.contains(document.activeElement)) return
     virtualizer.scrollToIndex(shownIndex, { align: 'start' })
-  }, [shownIndex, virtualizer])
+  }, [active, shownIndex, virtualizer])
 
   // The selected text moves as its page and those before it load and are measured, each a render
   // of this list, so it's kept in view until the user scrolls.
@@ -79,12 +80,7 @@ export function StoryPanel() {
   const following = useRef(true)
   useLayoutEffect(() => {
     following.current = true
-  }, [selected])
-  useLayoutEffect(() => {
-    if (!following.current) return
-    const text = list.current?.querySelector('[data-selected=true]')
-    if (text && !text.contains(document.activeElement)) text.scrollIntoView({ block: 'nearest' })
-  })
+  }, [active, selected])
 
   if (pages.length === 0) {
     return (
@@ -121,7 +117,13 @@ export function StoryPanel() {
                 if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null)
               }}
             >
-              <StoryPage page={page.id} number={item.index + 1} shown={page.id === shown} />
+              <StoryPage
+                page={page.id}
+                number={item.index + 1}
+                shown={page.id === shown}
+                following={following}
+                active={active}
+              />
             </div>
           )
         })}
@@ -144,10 +146,30 @@ function useShowPage() {
 }
 
 /** A page's heading, which shows the page, and its texts, read when the list first reaches it. */
-function StoryPage({ page, number, shown }: { page: PageId; number: number; shown: boolean }) {
+function StoryPage({
+  page,
+  number,
+  shown,
+  following,
+  active,
+}: {
+  page: PageId
+  number: number
+  shown: boolean
+  following: { current: boolean }
+  active: boolean
+}) {
   const { t } = useTranslation()
   const data = usePageStory(page).data
   const show = useShowPage()
+  const section = useRef<HTMLElement>(null)
+  // The virtual page's query can finish without a render of StoryPanel. Follow from here,
+  // after its actual selected row exists and after the parent's page scroll.
+  useEffect(() => {
+    if (!active || !shown || !following.current) return
+    const text = section.current?.querySelector('[data-selected=true]')
+    if (text && !text.contains(document.activeElement)) text.scrollIntoView({ block: 'nearest' })
+  })
   // Keep the scene's visible reading order and append the texts it leaves out.
   // Walk the entire tree so hiding a parent does not hide its Story fields.
   const texts = useMemo(() => {
@@ -164,7 +186,7 @@ function StoryPage({ page, number, shown }: { page: PageId; number: number; show
   }, [data])
 
   return (
-    <section className='grid gap-1 pb-3'>
+    <section ref={section} className='grid gap-1 pb-3'>
       <h3 data-shown={shown} className='pt-1'>
         <Button
           type='button'

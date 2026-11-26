@@ -575,6 +575,7 @@ impl Typing {
             layer: self.target(),
             chars,
             mixed,
+            scale: self.lettering.scale(),
         }
     }
 

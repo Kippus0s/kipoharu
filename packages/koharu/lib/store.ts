@@ -62,6 +62,7 @@ interface KoharuStore {
   /** Where the canvas's selection lies on the page as it's laid out, a point text's lines
    * included. */
   selectionBounds: Bounds | null
+  selectionScales: [LayerId, number][]
   /** Where the area the canvas's marquee and lasso marked lies on the page. */
   area: Bounds | null
   /** The text the canvas is typing into, and its selected characters' style. */
@@ -103,6 +104,7 @@ export const useKoharuStore = create<KoharuStore>()((set) => ({
   downloads: {},
   camera: { zoom: 1, x: 0, y: 0 },
   selectionBounds: null,
+  selectionScales: [],
   area: null,
   typing: null,
   picked: null,

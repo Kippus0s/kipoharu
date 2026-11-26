@@ -36,6 +36,7 @@ export function hear(active: () => boolean): Promise<void> {
     listen(events.selectionBounds, (selectionBounds) =>
       useKoharuStore.setState({ selectionBounds }),
     ),
+    listen(events.selectionScales, (selectionScales) => useKoharuStore.setState({ selectionScales })),
     listen(events.area, (area) => useKoharuStore.setState({ area })),
     listen(events.typing, (typing) => useKoharuStore.setState({ typing })),
     listen(events.color, (color) => receivePickedColor(toHex(color))),

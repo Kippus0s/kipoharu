@@ -871,6 +871,8 @@ export type Typed = {
 	 *  empty.
 	 */
 	mixed: CharKey[],
+	/**  The live lettering layout's scale, for the type bar. */
+	scale: number,
 };
 
 export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
@@ -969,6 +971,7 @@ project: (handler: (payload: string | null) => void): Promise<UnlistenFn> => lis
 page: (handler: (payload: PageId | null) => void): Promise<UnlistenFn> => listen<PageId | null>("page", (event) => handler(event.payload)),
 selection: (handler: (payload: LayerId[]) => void): Promise<UnlistenFn> => listen<LayerId[]>("selection", (event) => handler(event.payload)),
 selectionBounds: (handler: (payload: Bounds | null) => void): Promise<UnlistenFn> => listen<Bounds | null>("selection_bounds", (event) => handler(event.payload)),
+selectionScales: (handler: (payload: [LayerId, number][]) => void): Promise<UnlistenFn> => listen<[LayerId, number][]>("selection_scales", (event) => handler(event.payload)),
 area: (handler: (payload: Bounds | null) => void): Promise<UnlistenFn> => listen<Bounds | null>("area", (event) => handler(event.payload)),
 camera: (handler: (payload: Camera) => void): Promise<UnlistenFn> => listen<Camera>("camera", (event) => handler(event.payload)),
 typing: (handler: (payload: Typed | null) => void): Promise<UnlistenFn> => listen<Typed | null>("typing", (event) => handler(event.payload)),
