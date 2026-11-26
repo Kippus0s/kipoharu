@@ -61,8 +61,9 @@ const FIT_MODES = ['none', 'shrink', 'grow', 'best', 'proportional'] as const
  * there's no room below, kept inside the canvas, on one row or two when the canvas is narrower.
  * Every setting a text's lettering has: the style it draws with, its direction, and its box's
  * fit. As Photoshop's Character panel, while the canvas types, a character setting styles the
- * selected characters, or the next ones typed at a caret; otherwise every character of every text
- * and block selected. A value the characters don't share shows empty. */
+ * selected characters, or the next ones typed at a caret (a family change at a caret styles the
+ * whole text); otherwise every character of every text and block selected. A value the characters
+ * don't share shows empty. */
 export function TypeBar() {
   const { t } = useTranslation()
   const tool = useKoharuStore((state) => state.tool)
@@ -138,8 +139,9 @@ export function TypeBar() {
     })
   }
 
-  /** A character setting: while typing, the canvas styles the selected characters, or holds it
-   * for the next ones typed at a caret; otherwise every character of each target takes it. */
+  /** A character setting: while typing, the canvas styles the selected characters, or at a caret
+   * styles the whole text for a family change and holds other settings for the next characters;
+   * otherwise every character of each target takes it. */
   const applyChars = (patch: CharStyle) => {
     if (!typing) return apply({ chars: patch })
     // A mark can't unset a value, so no border on some characters is a border no wide.

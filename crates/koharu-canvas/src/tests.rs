@@ -2339,6 +2339,79 @@ fn styling_a_typed_selection_marks_those_characters_and_a_caret_holds_it() {
 }
 
 #[test]
+fn a_font_change_at_a_caret_restyles_the_whole_text_and_is_undoable() {
+    let rich = json!([
+        {"insert": "Hello", "attributes": {"size": 30.0}},
+        {"insert": " world"}
+    ]);
+    let Some(mut fixture) = unscaled(typed_text(rich)) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    press_key(
+        &mut fixture.canvas,
+        NamedKey::End,
+        Code::End,
+        Modifiers::default(),
+    );
+    let font = koharu_scene::CharStyle {
+        family: Some("Arial".to_owned()),
+        ..Default::default()
+    };
+    fixture.canvas.style_typing(&font).expect("a font");
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    assert_eq!(fixture.canvas.typing().unwrap().chars.family, None);
+    type_chord(&mut fixture.canvas, "y", Code::KeyY, CONTROL);
+    assert_eq!(fixture.canvas.typing().unwrap().chars.family, font.family);
+    type_text(&mut fixture.canvas, "!");
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["set_text"]);
+    let content: koharu_scene::RichText =
+        serde_json::from_value(layer(&fixture, text)["content"].clone()).expect("spans");
+    assert_eq!(content.text(), "Hello world!");
+    assert_eq!(content.0[0].attributes.size, Some(30.0));
+    assert!(
+        content.0.iter().all(|span| span.attributes.family == font.family)
+    );
+}
+
+#[test]
+fn a_font_change_on_a_selection_only_restyles_that_selection() {
+    let Some(mut fixture) = unscaled(typed_text(json!("Hello world"))) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    press_key(
+        &mut fixture.canvas,
+        NamedKey::Home,
+        Code::Home,
+        Modifiers::default(),
+    );
+    for _ in 0..5 {
+        press_key(&mut fixture.canvas, NamedKey::ArrowRight, Code::ArrowRight, SHIFT);
+    }
+    fixture
+        .canvas
+        .style_typing(&koharu_scene::CharStyle {
+            family: Some("Arial".to_owned()),
+            ..Default::default()
+        })
+        .expect("a font");
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["set_text"]);
+    let content: koharu_scene::RichText =
+        serde_json::from_value(layer(&fixture, text)["content"].clone()).expect("spans");
+    assert_eq!(content.0[0].insert, "Hello");
+    assert_eq!(content.0[0].attributes.family.as_deref(), Some("Arial"));
+    assert_eq!(content.0[1].insert, " world");
+    assert_eq!(content.0[1].attributes.family, None);
+}
+
+#[test]
 fn an_input_methods_composition_shows_until_it_commits() {
     let Some(mut fixture) = unscaled(Vec::new()) else {
         return;

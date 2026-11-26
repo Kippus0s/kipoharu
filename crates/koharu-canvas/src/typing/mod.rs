@@ -487,13 +487,21 @@ impl Typing {
         self.lettering.hit(self.transform().inverse() * page)
     }
 
-    /// Styles the selection with `patch`'s values; at a caret, holds them
-    /// for what's typed next, as Photoshop's Character panel does.
+    /// Styles the selection with `patch`'s values. At a caret, a font-family
+    /// change restyles the whole text; other settings apply to what's typed next.
     pub fn style(&mut self, patch: &CharStyle) -> anyhow::Result<()> {
         self.settle();
         let range = self.selected();
         if range.is_empty() {
-            self.held = Some(patch.or(&self.marks()));
+            let held = Some(patch.or(&self.marks()));
+            if patch.family.is_some() && !self.content.0.is_empty() {
+                let before = self.state();
+                self.content = self.content.marked(0..self.content.text().len(), patch);
+                self.held = held;
+                self.record(before);
+                return self.relay();
+            }
+            self.held = held;
             self.touch();
             return Ok(());
         }

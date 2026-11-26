@@ -352,8 +352,8 @@ impl Canvas {
         self.typing.as_ref().map(Typing::typed)
     }
 
-    /// Styles what's selected while typing with `patch`'s values, or holds
-    /// them for what's typed next at a caret.
+    /// Styles what's selected while typing. At a caret, a family change
+    /// styles the whole text; other settings apply to what's typed next.
     pub fn style_typing(&mut self, patch: &CharStyle) -> anyhow::Result<()> {
         match &mut self.typing {
             Some(typing) => typing.style(patch),
