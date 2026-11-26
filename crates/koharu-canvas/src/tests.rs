@@ -1409,6 +1409,72 @@ fn alt_wheel_scales_proportional_box_and_balloon_translation() {
 }
 
 #[test]
+fn proportional_handles_refit_boxes_and_paths_with_best_fit_strokes() {
+    for path in [false, true] {
+        let frame = if path {
+            json!({"path": {"path": "M50 50H250V150H50Z", "fit": "proportional",
+                "anchor": "center", "inset": 0.0}})
+        } else {
+            json!({"box": {"bounds": {"x": 50, "y": 50, "width": 200, "height": 100},
+                "fit": "proportional", "anchor": "center"}})
+        };
+        let text = json!({"content": [
+            {"insert": "He", "attributes": {"size": 24, "stroke_width": 2}},
+            {"insert": "llo"}
+        ], "style": {"chars": {"size": 24,
+            "stroke": [1.0, 1.0, 1.0, 1.0], "stroke_width": 3}}, "frame": frame});
+        let layer_data = if path {
+            json!({"kind": "block", "source": {"content": "original"}, "translation": text})
+        } else {
+            let mut text = text;
+            text["kind"] = json!("text");
+            text
+        };
+        let Some(mut fixture) = unscaled(vec![json!({"op": "add_layer", "page": "$page",
+            "index": 0, "layer": layer_data})]) else {
+            return;
+        };
+        let id = layers(&fixture)[0];
+        let original = layer(&fixture, id);
+        fixture.canvas.set_tool(Tool::Select);
+        fixture.canvas.select(vec![id]);
+
+        // The side narrows the frame; a subsequent corner grows it in both axes.
+        let mut previous = 24.0;
+        for (from, to, grows) in [
+            ((250.0, 100.0), (72.0, 100.0), false),
+            ((72.0, 150.0), (250.0, 250.0), true),
+        ] {
+            let effects = gesture(&mut fixture.canvas, from, to);
+            assert_eq!(apply(&mut fixture, effects), ["resize"]);
+            let current = layer(&fixture, id);
+            let text = if path { &current["translation"] } else { &current };
+            let size = text["style"]["chars"]["size"].as_f64().expect("size");
+            assert!(if grows { size > previous } else { size < previous });
+            // Best Fit scales both font size and outline width by the same factor.
+            let width = text["style"]["chars"]["stroke_width"]
+                .as_f64()
+                .expect("width");
+            assert!((width - 3.0 * size / 24.0).abs() < 0.001);
+            let marks = &text["content"][0]["attributes"];
+            let marked_width = marks["stroke_width"].as_f64().expect("marked width");
+            assert!((marked_width - 2.0 * size / 24.0).abs() < 0.001);
+            assert_eq!(marks["size"].as_f64(), Some(size));
+            assert_eq!(
+                text["frame"][if path { "path" } else { "box" }]["fit"],
+                "proportional"
+            );
+            assert!((rendered_size(&fixture, id) - size).abs() < 0.001);
+            previous = size;
+        }
+        fixture.session.lock().undo().expect("undo corner resize");
+        fixture.session.lock().undo().expect("undo side resize");
+        fixture.render();
+        assert_eq!(layer(&fixture, id), original);
+    }
+}
+
+#[test]
 fn alt_wheel_leaves_active_typing_alone() {
     let Some(mut fixture) = unscaled(typed_text(json!("Hello"))) else {
         return;

@@ -1,21 +1,22 @@
-//! The transition from automatic fitting to manual sizing.
+//! Manual text sizing and the transition from automatic fitting.
 //! It uses the renderer's actual scale, not the stored nominal size. The
 //! normalization and requested edit are applied in a single history step.
 
 use std::collections::HashMap;
 
 use anyhow::{Result, ensure};
-use koharu_scene::{Content, Edit, Frame, LayerId, Op, Project, Span, Text};
+use koharu_scene::{Content, Edit, Fit, Frame, LayerId, Op, PathFit, Project, Span, Text};
 use serde_json::{Value, json};
 
 use super::Renderer;
 
 impl Renderer {
-    /// Expand the UI's size-only or explicit Proportional fit edits. Other
-    /// operations (including direct frame resizing) retain their semantics.
+    /// Normalize Best Fit transitions and fit Proportional handle resizes.
+    /// Other operations retain their semantics.
     pub fn prepare_manual_text_edit(&self, project: &Project, mut edit: Edit) -> Result<Edit> {
         let sizing = edit.label == "set_style";
-        if !sizing && edit.label != "update_layer" {
+        let resizing = edit.label == "resize";
+        if !sizing && !resizing && edit.label != "update_layer" {
             return Ok(edit);
         }
         let mut ops = Vec::new();
@@ -34,7 +35,38 @@ impl Renderer {
                             }
                             _ => None,
                         };
-                        if let Some((text, translation)) = target
+                        if resizing {
+                            if let Some((text, translation)) = target
+                                && let Some(fitted) = proportional_resize(text, translation, patch)
+                                && let Some(layout) = self.layout(id, &fitted)?
+                            {
+                                let scale = f64::from(layout.scale);
+                                let size = text.style.chars.size.unwrap_or(24.0) * scale;
+                                ensure!(
+                                    scale.is_finite() && scale > 0.0 && size.is_finite() && size > 0.0,
+                                    "invalid fitted size for proportional resize"
+                                );
+                                // Bake Best Fit's scale into the sizes and strokes alongside
+                                // the requested frame, without triggering frame scaling again.
+                                let local = if translation {
+                                    &mut patch["translation"]
+                                } else {
+                                    patch
+                                };
+                                local["style"] = json!({"chars": {"size": size}});
+                                if let Some(width) = text.style.chars.stroke_width {
+                                    local["style"]["chars"]["stroke_width"] = json!(width * scale);
+                                }
+                                let mut spans = text.content.0.clone();
+                                scale_marks(&mut spans, scale);
+                                if spans != text.content.0 {
+                                    ops.push(Op::SetRichText {
+                                        layer: layer.clone(),
+                                        spans,
+                                    });
+                                }
+                            }
+                        } else if let Some((text, translation)) = target
                             && text.is_best_fit()
                             && is_transition(text, translation, patch, sizing)
                         {
@@ -85,6 +117,30 @@ impl Renderer {
         edit.ops = ops;
         Ok(edit)
     }
+}
+
+/// Temporarily use Best Fit on the geometry produced by the canvas handles.
+/// The committed frame retains Proportional mode, with the fitted sizes and strokes.
+fn proportional_resize(text: &Text, translation: bool, patch: &Value) -> Option<Text> {
+    let local = if translation { &patch["translation"] } else { patch };
+    let frame: Frame = serde_json::from_value(local.get("frame")?.clone()).ok()?;
+    if *patch != wrapped(json!({"frame": frame}), translation) || frame == text.frame {
+        return None;
+    }
+    let mut fitted = text.clone();
+    fitted.frame = frame;
+    match (&text.frame, &mut fitted.frame) {
+        (
+            Frame::Box { fit: Fit::Proportional, .. },
+            Frame::Box { fit, .. },
+        ) if *fit == Fit::Proportional => *fit = Fit::Best,
+        (
+            Frame::Path { fit: PathFit::Proportional, .. },
+            Frame::Path { fit, .. },
+        ) if *fit == PathFit::Proportional => *fit = PathFit::Best,
+        _ => return None,
+    }
+    Some(fitted)
 }
 
 fn fit_patch(text: &Text, fit: &str) -> Value {
