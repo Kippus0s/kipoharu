@@ -1,4 +1,4 @@
-//! The transition from automatic fitting to manual proportional sizing.
+//! The transition from automatic fitting to manual sizing.
 //! It uses the renderer's actual scale, not the stored nominal size. The
 //! normalization and requested edit are applied in a single history step.
 
@@ -46,9 +46,12 @@ impl Renderer {
                             );
                             ensure!(
                                 scale.is_finite() && scale > 0.0 && size.is_finite() && size > 0.0,
-                                "invalid rendered size for proportional text"
+                                "invalid rendered size for manual text"
                             );
-                            let patch = base_patch(text, translation, size, scale);
+                            // Manual size changes keep the frame fixed; choosing Proportional
+                            // explicitly retains the original proportional behaviour.
+                            let fit = if sizing { "none" } else { "proportional" };
+                            let patch = base_patch(text, translation, size, scale, fit);
                             ops.push(Op::UpdateLayer {
                                 layer: layer.clone(),
                                 patch,
@@ -84,10 +87,10 @@ impl Renderer {
     }
 }
 
-fn fit_patch(text: &Text) -> Value {
+fn fit_patch(text: &Text, fit: &str) -> Value {
     match &text.frame {
-        Frame::Box { .. } => json!({"frame": {"box": {"fit": "proportional"}}}),
-        Frame::Path { .. } => json!({"frame": {"path": {"fit": "proportional"}}}),
+        Frame::Box { .. } => json!({"frame": {"box": {"fit": fit}}}),
+        Frame::Path { .. } => json!({"frame": {"path": {"fit": fit}}}),
         Frame::Point => unreachable!("point text cannot be Best Fit"),
     }
 }
@@ -114,12 +117,12 @@ fn is_transition(text: &Text, translation: bool, patch: &Value, sizing: bool) ->
             .is_some_and(|size| size.is_finite() && size > 0.0)
             && *patch == wrapped(json!({"style": {"chars": {"size": size}}}), translation)
     } else {
-        *patch == wrapped(fit_patch(text), translation)
+        *patch == wrapped(fit_patch(text, "proportional"), translation)
     }
 }
 
-fn base_patch(text: &Text, translation: bool, size: f64, scale: f64) -> Value {
-    let mut patch = fit_patch(text);
+fn base_patch(text: &Text, translation: bool, size: f64, scale: f64, fit: &str) -> Value {
+    let mut patch = fit_patch(text, fit);
     patch["style"] = json!({"chars": {"size": size}});
     if let Some(width) = text.style.chars.stroke_width {
         patch["style"]["chars"]["stroke_width"] = json!(width * scale);
@@ -158,15 +161,15 @@ mod tests {
             assert!(text.is_best_fit());
             let requested = wrapped(json!({"style": {"chars": {"size": 19.0}}}), translation);
             assert!(is_transition(&text, translation, &requested, true));
-            let choose = wrapped(fit_patch(&text), translation);
+            let choose = wrapped(fit_patch(&text, "proportional"), translation);
             assert!(is_transition(&text, translation, &choose, false));
-            let patch = base_patch(&text, translation, 16.0, 0.5);
+            let patch = base_patch(&text, translation, 16.0, 0.5, "none");
             let local = if translation {
                 &patch["translation"]
             } else {
                 &patch
             };
-            assert_eq!(local["frame"], fit_patch(&text)["frame"]);
+            assert_eq!(local["frame"], fit_patch(&text, "none")["frame"]);
             assert_eq!(
                 local["style"]["chars"],
                 json!({"size": 16.0, "stroke_width": 1.0})

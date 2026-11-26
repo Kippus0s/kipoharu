@@ -10,6 +10,8 @@ export const shortcuts = {
   duplicate: 'mod+e',
   bold: 'mod+b',
   italic: 'mod+i',
+  lock: 'mod+l',
+  unlock: 'mod+shift+l',
   /** Cycle the starred typefaces of selected text boxes. */
   nextFavoriteFont: 'mod+f',
   previousFavoriteFont: 'mod+shift+f',

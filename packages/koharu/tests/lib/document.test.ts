@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { dropMoves } from '@/lib/document'
+import { dropMoves, lockTargets } from '@/lib/document'
 import type { Layer } from '@koharu/ipc/protocol'
 
 /** A shown, unlocked layer of `kind` holding `children`, with only what dropping reads. */
@@ -30,5 +30,27 @@ describe('dropMoves', () => {
       { layer: 'free', parent: 'balloon', index: 1 },
     ])
     expect(dropMoves(page, ['panel'], { target: 'balloon', zone: 'after' })).toBeNull()
+  })
+})
+
+describe('lockTargets', () => {
+  it('locks children before their selected parents and unlocks in the opposite order', () => {
+    const child = layer('child', 'text')
+    const parent = layer('parent', 'group', [child])
+    const separate = layer('separate', 'text')
+    const selected = ['parent', 'child', 'separate']
+    expect(lockTargets([parent, separate], selected, true)).toEqual(['separate', 'child', 'parent'])
+    parent.locked = child.locked = separate.locked = true
+    expect(lockTargets([parent, separate], selected, false)).toEqual(['parent', 'child', 'separate'])
+  })
+
+  it('skips unchanged layers and children of unselected locked parents', () => {
+    const child = layer('child', 'text')
+    const parent = layer('parent', 'group', [child])
+    const separate = layer('separate', 'text')
+    parent.locked = true
+    expect(lockTargets([parent, separate], ['child', 'separate'], true)).toEqual(['separate'])
+    child.locked = true
+    expect(lockTargets([parent, separate], ['child', 'separate'], false)).toEqual([])
   })
 })

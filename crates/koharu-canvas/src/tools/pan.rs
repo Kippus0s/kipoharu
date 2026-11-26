@@ -130,7 +130,7 @@ pub(crate) fn wheel(cx: &Context, sample: Sample, delta: ScrollDelta) -> Vec<Eff
                 if size == old {
                     return Vec::new();
                 }
-                // The host converts Best Fit to Proportional; the scene scales proportional frames.
+                // The host converts Best Fit to fixed sizing; explicitly proportional frames still scale.
                 let mut patch = json!({"style": {"chars": {"size": size}}});
                 if translation {
                     patch = json!({"translation": patch});

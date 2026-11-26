@@ -52,6 +52,20 @@ export function outermostLayers(layers: Layer[], selected: LayerId[]): LayerId[]
     .map(({ layer }) => layer.id)
 }
 
+/** Selected layers whose own lock can change. Lock children before parents, unlock parents
+ * before children, and leave descendants of an unselected locked parent alone. */
+export function lockTargets(layers: Layer[], selected: LayerId[], locked: boolean): LayerId[] {
+  const targets = walkLayers(layers)
+    .filter(
+      ({ layer, ancestors }) =>
+        selected.includes(layer.id) &&
+        layer.locked !== locked &&
+        !ancestors.some((ancestor) => ancestor.locked && (locked || !selected.includes(ancestor.id))),
+    )
+    .map(({ layer }) => layer.id)
+  return locked ? targets.reverse() : targets
+}
+
 /** A block's own picture layers: its clean-up, and the mask it shows through. */
 export type Part = 'cleanup' | 'mask'
 

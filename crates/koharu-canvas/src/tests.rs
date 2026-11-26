@@ -1195,20 +1195,9 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
         let text = &new["translation"];
         let size = text["style"]["chars"]["size"].as_f64().expect("size");
         assert!(near(size, sizes[i] + 1.0));
-        let ratio = size / sizes[i];
-        if i == 0 {
-            let frame = &text["frame"]["box"];
-            assert_eq!(frame["fit"], "proportional");
-            assert!(near(
-                frame["bounds"]["width"].as_f64().unwrap(),
-                100.0 * ratio
-            ));
-        } else {
-            let frame = &text["frame"]["path"];
-            assert_eq!(frame["fit"], "proportional");
-            let path = BezPath::from_svg(frame["path"].as_str().unwrap()).unwrap();
-            assert!((path.bounding_box().width() - 80.0 * ratio).abs() < 1e-6);
-        }
+        let mut frame = old[i]["translation"]["frame"].clone();
+        frame[if i == 0 { "box" } else { "path" }]["fit"] = json!("none");
+        assert_eq!(text["frame"], frame);
     }
     assert_eq!(fixture.canvas.camera(), camera);
     fixture.session.lock().undo().expect("undo");
@@ -1219,7 +1208,7 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
 }
 
 #[test]
-fn manual_best_to_proportional_keeps_frame_then_size_edit_scales_it() {
+fn explicit_proportional_and_manual_fixed_size_keep_best_fit_frame() {
     let Some(mut fixture) = unscaled(vec![
         json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {
             "kind": "text", "content": "Hi", "style": {"chars": {"size": 12}},
@@ -1304,19 +1293,18 @@ fn manual_best_to_proportional_keeps_frame_then_size_edit_scales_it() {
     );
     let boxed = layer(&fixture, ids[0]);
     let block = layer(&fixture, ids[1]);
-    assert_eq!(boxed["frame"]["box"]["fit"], "proportional");
-    assert_eq!(block["translation"]["frame"]["path"]["fit"], "proportional");
-    assert!(near(
-        boxed["frame"]["box"]["bounds"]["width"].as_f64().unwrap(),
-        100.0 * 36.0 / sizes[0]
-    ));
-    let path = BezPath::from_svg(
-        block["translation"]["frame"]["path"]["path"]
-            .as_str()
-            .unwrap(),
-    )
-    .unwrap();
-    assert!((path.bounding_box().width() - 80.0 * 36.0 / sizes[1]).abs() < 1e-6);
+    assert_eq!(boxed["frame"]["box"]["fit"], "none");
+    assert_eq!(block["translation"]["frame"]["path"]["fit"], "none");
+    assert_eq!(
+        boxed["frame"]["box"]["bounds"],
+        old[0]["frame"]["box"]["bounds"]
+    );
+    assert_eq!(
+        block["translation"]["frame"]["path"]["path"],
+        old[1]["translation"]["frame"]["path"]["path"]
+    );
+    assert_eq!(boxed["style"]["chars"]["size"], json!(36.0));
+    assert_eq!(block["translation"]["style"]["chars"]["size"], json!(36.0));
 }
 
 #[test]

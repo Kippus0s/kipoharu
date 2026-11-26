@@ -13,9 +13,9 @@ import { StatusBar } from '@/components/editor/StatusBar'
 import { ToolBar } from '@/components/editor/ToolBar'
 import { TypeBar } from '@/components/editor/TypeBar'
 import { toRgba } from '@/lib/color'
-import { isBlockLayer, isTextLayer, walkLayers } from '@/lib/document'
+import { isBlockLayer, isTextLayer, lockTargets, walkLayers } from '@/lib/document'
 import { send, usePage } from '@/lib/queries'
-import { deleteSelection } from '@/lib/scene'
+import { deleteSelection, setLocked } from '@/lib/scene'
 import { shortcuts, toolKeys } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
 import { useWorkspaceShortcuts } from '@/lib/workspaceShortcuts'
@@ -173,6 +173,16 @@ export function CanvasWorkspace() {
       send(commands.deselect)
     },
     command,
+  )
+  useHotkeys(
+    [shortcuts.lock, shortcuts.unlock],
+    (event, { shift }) => {
+      if (event.repeat || typing !== null || !page) return
+      const locked = !shift
+      const targets = lockTargets(page.layers, selectedLayers, locked)
+      if (targets.length) send(setLocked, targets, locked)
+    },
+    { ...command, enabled: typing === null && selectedLayers.length > 0 },
   )
   useHotkeys(shortcuts.fit, () => send(commands.fit), command)
   useHotkeys(
