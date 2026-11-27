@@ -12,14 +12,13 @@ import {
   useQuery,
 } from '@tanstack/react-query'
 import type { ParseKeys } from 'i18next'
-import { useMemo } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 
 import {
   commands,
+  type Change,
   type FontFamily,
   type History,
-  type LayerId,
   type Page,
   type PageId,
   type PageSummary,
@@ -28,6 +27,7 @@ import {
 } from '@koharu/ipc/protocol'
 import { toast } from '@koharu/ui/components/toast'
 
+import { storyOrder } from './document'
 import i18n from './i18n'
 
 export const projectKey = ['project'] as const
@@ -35,9 +35,6 @@ export const pageKey = ['page'] as const
 /** Page data is shared by the canvas inspector and Story, keyed by project and page. */
 export const pageDataKey = (name: string | null, page: PageId | null) =>
   [...pageKey, name, page] as const
-export const storyKey = ['story'] as const
-export const storyPageKey = (name: string | null, page: PageId) =>
-  [...storyKey, name, page] as const
 export const projectsKey = ['projects'] as const
 export const fontsKey = ['fonts', 'installed'] as const
 export const onlineFontsKey = ['fonts', 'online'] as const
@@ -178,24 +175,18 @@ export function usePage(enabled = true) {
   return useQuery({ ...pageQuery(name, page), enabled: enabled && page !== null })
 }
 
-/** Story observes the same page query as the inspector, and reads its order separately. */
+/** Story's order is a derived view of the already shared page. React Query memoizes
+ * the stable selector and structurally shares unchanged results, with no second IPC read. */
+const selectStory = (page: Page | null) =>
+  page ? { page, story: storyOrder(page.layers) } : null
+
 export function usePageStory(page: PageId, enabled = true) {
   const { data: name = null } = useQuery({
     ...projectQuery,
     enabled,
     select: (project) => project?.name ?? null,
   })
-  const layers = useQuery({ ...pageQuery(name, page), enabled: enabled && name !== null }).data
-  const story = useQuery({
-    queryKey: storyPageKey(name, page),
-    queryFn: async () => (await commands.query({ query: 'get_story', page })) as LayerId[],
-    enabled: enabled && name !== null,
-  }).data
-  const data = useMemo(
-    () => (layers && story ? { page: layers, story } : undefined),
-    [layers, story],
-  )
-  return { data }
+  return useQuery({ ...pageQuery(name, page), enabled: enabled && name !== null, select: selectStory })
 }
 
 /** Installed fonts only; looking at this list never downloads the online catalog. */
@@ -296,15 +287,73 @@ export function useImportPages() {
   return { importPages: run, importing: busy }
 }
 
-/** Resolves once the shown page has been read since the call: a read already under way, as a
- * change starts one, is joined rather than started again, and one a later change starts is waited
- * for too. An edit shown before it lands holds until then, so it doesn't flash back. */
-export async function readPage(): Promise<void> {
-  const project = queryClient.getQueryData<ProjectView | null>(projectKey)
-  if (!project?.page) return
-  const filters = { queryKey: pageDataKey(project.name, project.page), exact: true }
-  do await queryClient.refetchQueries(filters, { cancelRefetch: false })
-  while (queryClient.isFetching(filters) > 0)
+/** Invalidate immediately, but share one active read per key for a short burst of events.
+ * Never let a read started before a change repopulate the cache. Inactive pages stay stale
+ * until they are next viewed. Separate document edits and undo steps are not merged. */
+const queuedRefreshes = new WeakMap<object, Promise<void>>()
+
+function pendingRefresh(queryKey: QueryKey): Promise<void> | undefined {
+  const query = queryClient.getQueryCache().find({ queryKey, exact: true })
+  return query && queuedRefreshes.get(query)
+}
+
+export function queueRefresh(queryKey: QueryKey): Promise<void> {
+  const filters = { queryKey, exact: true }
+  const query = queryClient.getQueryCache().find(filters)
+  if (!query) return Promise.resolve()
+  void queryClient.cancelQueries(filters)
+  void queryClient.invalidateQueries({ ...filters, refetchType: 'none' })
+  const queued = queuedRefreshes.get(query)
+  if (queued) return queued
+  const promise = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      queuedRefreshes.delete(query)
+      // A project switch or page removal may have discarded this cache entry.
+      if (queryClient.getQueryCache().find(filters) !== query) return resolve()
+      void queryClient.refetchQueries({ ...filters, type: 'active' }, { cancelRefetch: false })
+        .then(resolve, resolve)
+    }, 16)
+  })
+  queuedRefreshes.set(query, promise)
+  return promise
+}
+
+/** Keep the TypeBar's draft until its edit's event-driven page read finishes. If the event
+ * arrived before the command answered, do not read again. If it arrives later, join its read.
+ * A bounded fallback covers delayed/missed events without leaving the control pending forever. */
+export async function readPage(
+  change: Change,
+  origin: Pick<ProjectView, 'name' | 'page'>,
+): Promise<void> {
+  const { name, page } = origin
+  if (!page || !change.pages.changed.includes(page)) return
+  const queryKey = pageDataKey(name, page)
+  const filters = { queryKey, exact: true }
+  const project = () => queryClient.getQueryData<ProjectView | null>(projectKey)
+  const observed = () => project()?.name !== name || project()?.revisions[page] === change.revision
+  if (!observed()) {
+    await new Promise<void>((resolve) => {
+      const finish = () => {
+        clearTimeout(timer)
+        unsubscribe()
+        resolve()
+      }
+      const unsubscribe = queryClient.getQueryCache().subscribe(() => {
+        if (observed()) finish()
+      })
+      const timer = setTimeout(finish, 500)
+    })
+  }
+  if (project()?.name !== name || project()?.page !== page) return
+  const queued = pendingRefresh(queryKey)
+  if (queued) await queued
+  else if (!observed()) await queryClient.refetchQueries(filters, { cancelRefetch: false })
+  while (project()?.name === name && project()?.page === page) {
+    const next = pendingRefresh(queryKey)
+    if (!next && queryClient.isFetching(filters) === 0) break
+    if (next) await next
+    else await queryClient.refetchQueries(filters, { cancelRefetch: false })
+  }
 }
 
 export async function refresh(...keys: QueryKey[]): Promise<void> {

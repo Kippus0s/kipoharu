@@ -18,7 +18,10 @@ import {
   letteringOf,
   walkLayers,
 } from '@/lib/document'
-import { readPage, send, useFonts, useOnlineFonts, usePage, usePreferences } from '@/lib/queries'
+import {
+  projectKey, queryClient, readPage, send, useFonts, useOnlineFonts, usePage, usePreferences,
+  type ProjectView,
+} from '@/lib/queries'
 import { setFit as setFrameFit, setStyle, updateLayer } from '@/lib/scene'
 import { shortcutLabel, shortcuts } from '@/lib/shortcuts'
 import { useKoharuStore, type CanvasTool } from '@/lib/store'
@@ -61,8 +64,8 @@ const FIT_MODES = ['none', 'shrink', 'grow', 'best', 'proportional'] as const
  * there's no room below, kept inside the canvas, on one row or two when the canvas is narrower.
  * Every setting a text's lettering has: the style it draws with, its direction, and its box's
  * fit. As Photoshop's Character panel, while the canvas types, a character setting styles the
- * selected characters, or the next ones typed at a caret (a family change at a caret styles the
- * whole text); otherwise every character of every text and block selected. A value the characters
+ * selected characters, or the next ones typed at a caret (family and outline changes at a caret
+ * style the whole text); otherwise every character of every text and block selected. A value the characters
  * don't share shows empty. */
 export function TypeBar() {
   const { t } = useTranslation()
@@ -94,7 +97,8 @@ export function TypeBar() {
       targets: Layer[]
       patch: TextStyle | ((layer: Layer) => TextStyle)
     }) => setStyle(edit.targets, edit.patch),
-    onSettled: readPage,
+    onMutate: () => queryClient.getQueryData<ProjectView | null>(projectKey),
+    onSettled: (change, _, __, origin) => change && origin ? readPage(change, origin) : undefined,
   })
 
   // While typing, what the canvas says its selected characters share; otherwise what every
@@ -147,7 +151,7 @@ export function TypeBar() {
   }
 
   /** A character setting: while typing, the canvas styles the selected characters, or at a caret
-   * styles the whole text for a family change and holds other settings for the next characters;
+   * styles the whole text for family and outline changes and holds other settings for the next characters;
    * otherwise every character of each target takes it. */
   const applyChars = (patch: CharStyle) => {
     if (!typing) return apply({ chars: patch })

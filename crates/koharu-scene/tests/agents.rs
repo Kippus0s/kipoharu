@@ -111,3 +111,51 @@ fn agents_patch_a_block_and_read_it_in_its_page() {
         ("1.0.0", 1)
     );
 }
+
+#[test]
+fn cached_page_summaries_follow_edits_history_order_and_reopening() {
+    use koharu_scene::{PageId, Session};
+    let (_dir, mut session, first) = session();
+    let second = page(&mut session);
+    let a = add(&mut session, first, None, block(0.0));
+    let b = add(&mut session, second, None, block(0.0));
+    let summaries = |session: &Session| -> Vec<(PageId, usize, usize)> {
+        let Answer::Project(project) = session.query(Query::GetProject).expect("summaries") else {
+            panic!("not a project");
+        };
+        project.pages.iter().map(|p| (p.id, p.texts, p.translated)).collect()
+    };
+    let empty = vec![(first, 1, 0), (second, 1, 0)];
+    assert_eq!(summaries(&session), empty);
+    apply(&mut session, vec![json!({"op": "set_text", "layer": a, "text": "Hello"})])
+        .expect("translation");
+    let translated = vec![(first, 1, 1), (second, 1, 0)];
+    assert_eq!(summaries(&session), translated);
+    apply(&mut session, vec![json!({"op": "set_rich_text", "layer": b, "spans": [
+        {"insert": " ", "attributes": {"weight": 700}}, {"insert": "\u{3000}"}
+    ]})]).expect("blank spans");
+    assert_eq!(summaries(&session), translated);
+    apply(&mut session, vec![json!({"op": "update_layer", "layer": a, "patch": {"visible": false}})])
+        .expect("hide translation");
+    assert_eq!(summaries(&session), translated);
+    apply(&mut session, vec![json!({"op": "set_text", "layer": a, "text": ""})])
+        .expect("clear translation");
+    assert_eq!(summaries(&session), empty);
+    session.undo().expect("undo");
+    assert_eq!(summaries(&session), translated);
+    session.redo().expect("redo");
+    assert_eq!(summaries(&session), empty);
+    session.undo().expect("undo");
+    apply(&mut session, vec![json!({"op": "move_page", "page": second, "index": 0})])
+        .expect("reorder");
+    let reordered = vec![(second, 1, 0), (first, 1, 1)];
+    assert_eq!(summaries(&session), reordered);
+    apply(&mut session, vec![json!({"op": "remove_page", "page": first})]).expect("remove");
+    assert_eq!(summaries(&session), vec![(second, 1, 0)]);
+    session.undo().expect("restore page");
+    assert_eq!(summaries(&session), reordered);
+    let path = session.path().to_owned();
+    drop(session);
+    let reopened = Session::open(path).expect("reopen");
+    assert_eq!(summaries(&reopened), reordered);
+}

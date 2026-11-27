@@ -3,7 +3,7 @@ import { createElement, StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Providers from '@/app/providers'
-import { queryClient, usePage, usePageStory, useProject } from '@/lib/queries'
+import { queryClient, readPage, usePage, usePageStory, useProject } from '@/lib/queries'
 import { useKoharuStore } from '@/lib/store'
 import { commands, events, type Change, type Preferences } from '@koharu/ipc/protocol'
 
@@ -150,13 +150,17 @@ describe('Tauri runtime', () => {
     }
     width = 120
     holdSummaries = true
-    act(() => tell('change', change))
+    // Two edits arriving together share the same page and summary reads.
+    act(() => {
+      tell('change', { ...change, revision: '1a' })
+      tell('change', change)
+    })
     await waitFor(() => expect(releaseSummaries).toBeDefined())
     expect(await screen.findByText('a:100:120:1')).toBeInTheDocument()
     expect(query.mock.calls.map(([request]) => request)).toEqual(expect.arrayContaining([
-      { query: 'get_project' }, { query: 'get_page', page: 'b' }, { query: 'get_story', page: 'b' },
+      { query: 'get_project' }, { query: 'get_page', page: 'b' },
     ]))
-    expect(query).toHaveBeenCalledTimes(3)
+    expect(query).toHaveBeenCalledTimes(2)
 
     // The outstanding summary read must not overwrite a newer page or selection-history event.
     act(() => {
@@ -171,9 +175,24 @@ describe('Tauri runtime', () => {
     expect(await screen.findByText('b:100:120:2')).toBeInTheDocument()
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
     expect(screen.getByText('b:100:120:2')).toBeInTheDocument()
-    expect(query).toHaveBeenCalledTimes(3)
+    expect(query).toHaveBeenCalledTimes(2)
     expect(commands.getOpenProject).not.toHaveBeenCalled()
     expect(commands.getShownPage).not.toHaveBeenCalled()
+
+    // The style command can finish after the event read. Don't issue a second read.
+    await readPage(change, { name: 'Book', page: 'b' })
+    expect(query).toHaveBeenCalledTimes(2)
+
+    // Or its response can precede the event. Join that event's scheduled page read.
+    holdSummaries = false
+    query.mockClear()
+    const later = { ...change, revision: '4' }
+    const settled = readPage(later, { name: 'Book', page: 'b' })
+    act(() => tell('change', later))
+    await settled
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    expect(query.mock.calls.filter(([request]) => request.query === 'get_page')).toHaveLength(1)
+    expect(query.mock.calls.filter(([request]) => request.query === 'get_story')).toHaveLength(0)
     view.unmount()
   })
 

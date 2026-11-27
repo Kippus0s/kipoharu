@@ -10,9 +10,8 @@ import {
   pageKey,
   projectKey,
   queryClient,
+  queueRefresh,
   refresh,
-  storyKey,
-  storyPageKey,
   type ProjectView,
 } from './queries'
 import {
@@ -81,7 +80,7 @@ function receiveProject(name: string | null): void {
     store.selectLayers([])
   }
   void queryClient.cancelQueries({ queryKey: projectKey, exact: true }, { revert: false })
-  for (const queryKey of [pageKey, storyKey, ['thumbnail']]) {
+  for (const queryKey of [pageKey, ['thumbnail']]) {
     queryClient.removeQueries({ queryKey })
   }
   if (name === null) {
@@ -114,6 +113,9 @@ function receiveChange(change: Change): void {
     return
   }
   const affected = [...change.pages.added, ...change.pages.changed]
+  const documentChanged = affected.length > 0 || change.pages.removed.length > 0 || change.pages.reordered
+  // Cancellation may restore the query's previous data. Do it before installing the new history.
+  if (documentChanged) void queryClient.cancelQueries({ queryKey: projectKey, exact: true })
   const revisions = { ...project.revisions }
   for (const page of affected) revisions[page] = change.revision
   for (const page of change.pages.removed) delete revisions[page]
@@ -124,18 +126,12 @@ function receiveChange(change: Change): void {
   })
 
   for (const page of change.pages.removed) {
-    for (const queryKey of [pageDataKey(project.name, page), storyPageKey(project.name, page)]) {
-      queryClient.removeQueries({ queryKey, exact: true })
-    }
+    queryClient.removeQueries({ queryKey: pageDataKey(project.name, page), exact: true })
   }
   for (const page of affected) {
-    for (const queryKey of [pageDataKey(project.name, page), storyPageKey(project.name, page)]) {
-      // Also cancel inactive or first-time reads; their old answers must not repopulate the cache.
-      void queryClient.cancelQueries({ queryKey, exact: true })
-      void queryClient.invalidateQueries({ queryKey, exact: true }).catch(() => undefined)
-    }
+    void queueRefresh(pageDataKey(project.name, page))
   }
-  if (affected.length || change.pages.removed.length || change.pages.reordered) {
-    void refresh(projectKey).catch(() => undefined)
+  if (documentChanged) {
+    void queueRefresh(projectKey)
   }
 }

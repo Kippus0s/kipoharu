@@ -14,6 +14,7 @@ use crate::{
     Change, Edit, Error, Hash, History, LayerId, PageId, Project, ProjectId, Rect, Result,
     Revision, Tiles, change, edit,
     project::Picture,
+    query::PageSummaries,
     store::{Store, named},
     tiles,
 };
@@ -50,6 +51,7 @@ pub struct Session {
     store: Store,
     path: PathBuf,
     project: Project,
+    pub(crate) page_summaries: PageSummaries,
     revision: Revision,
     undo: VecDeque<Step>,
     redo: VecDeque<Step>,
@@ -140,10 +142,12 @@ impl Session {
     }
 
     fn assemble(store: Store, path: &Path, project: Project) -> Self {
+        let page_summaries = PageSummaries::new(&project);
         Self {
             store,
             path: path.to_owned(),
             project,
+            page_summaries,
             revision: Revision::new(),
             undo: VecDeque::with_capacity(MAX_STEPS + 1),
             redo: VecDeque::with_capacity(MAX_STEPS + 1),
@@ -314,6 +318,7 @@ impl Session {
         let changed = next != self.project;
         if changed {
             let bytes = history_cost(&self.project, &next);
+            self.page_summaries.update(&self.project, &next);
             let before = std::mem::replace(&mut self.project, next);
             let revision = std::mem::replace(&mut self.revision, Revision::new());
             self.push_step(Step {
@@ -507,6 +512,7 @@ impl Session {
         } else if let Some((page, layers)) = &mut self.selection {
             layers.retain(|id| self.project.index.get(id) == Some(&*page));
         }
+        self.page_summaries.update(&before, &self.project);
         let (pages, layers) = change::changed(&before, &self.project);
         let change = Change {
             revision: self.revision(),

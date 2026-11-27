@@ -37,6 +37,21 @@ export function walkLayers(layers: Layer[], ancestors: Layer[] = []): Placed[] {
   ])
 }
 
+/** The same visible, parent-first reading order as Project::story in the scene.
+ * A hidden container hides all its descendants from the numbered reading order. */
+export function storyOrder(layers: Layer[]): LayerId[] {
+  const order: LayerId[] = []
+  const walk = (children: Layer[]) => {
+    for (const layer of children) {
+      if (!layer.visible) continue
+      if (isBlockLayer(layer) || isTextLayer(layer)) order.push(layer.id)
+      if (layer.children) walk(layer.children)
+    }
+  }
+  walk(layers)
+  return order
+}
+
 export function findLayer(layers: Layer[], id: LayerId): Placed | undefined {
   return walkLayers(layers).find((placed) => placed.layer.id === id)
 }

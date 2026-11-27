@@ -1,11 +1,17 @@
 //! Reads for tools. Answers serialize the project's own values, so a tool
 //! sees a layer as the file stores it.
 
+use std::collections::BTreeMap;
+
+use imbl::ordmap::DiffItem;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
-use crate::{Background, History, Layer, LayerId, Page, PageId, ProjectId, Result, Session, Size};
+use crate::{
+    Background, Content, History, Layer, LayerId, Page, PageId, Project, ProjectId, Result,
+    Session, Size, project::depth_first,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type, JsonSchema)]
 #[serde(tag = "query", rename_all = "snake_case", deny_unknown_fields)]
@@ -59,6 +65,75 @@ pub struct PageSummary {
     pub translated: usize,
 }
 
+impl PageSummary {
+    fn from_page(page: &Page) -> Self {
+        let mut texts = 0;
+        let mut translated = 0;
+        for layer in depth_first(&page.layers) {
+            if let Content::Block(block) = &layer.content {
+                texts += 1;
+                // A concatenation is blank exactly when every span is blank.
+                // No need to allocate the whole translation to test that.
+                if block.translation.as_ref().is_some_and(|text| {
+                    text.content
+                        .0
+                        .iter()
+                        .any(|span| !span.insert.trim().is_empty())
+                }) {
+                    translated += 1;
+                }
+            }
+        }
+        Self {
+            id: page.id,
+            size: page.size,
+            background: page.background,
+            texts,
+            translated,
+        }
+    }
+}
+
+/// Derived only from page metadata, not raster tiles or history snapshots.
+/// Keep one summary per live page and update it for the persistent map's diff.
+#[derive(Default)]
+pub(crate) struct PageSummaries(BTreeMap<PageId, PageSummary>);
+
+impl PageSummaries {
+    pub(crate) fn new(project: &Project) -> Self {
+        Self(
+            project
+                .pages()
+                .map(|page| (page.id, PageSummary::from_page(page)))
+                .collect(),
+        )
+    }
+
+    pub(crate) fn update(&mut self, before: &Project, after: &Project) {
+        for item in before.pages.diff(&after.pages) {
+            match item {
+                DiffItem::Add(id, page) => {
+                    self.0.insert(*id, PageSummary::from_page(page));
+                }
+                DiffItem::Update { new, .. } => {
+                    self.0.insert(*new.0, PageSummary::from_page(new.1));
+                }
+                DiffItem::Remove(id, _) => {
+                    self.0.remove(id);
+                }
+            }
+        }
+    }
+
+    fn ordered(&self, project: &Project) -> Vec<PageSummary> {
+        project
+            .order
+            .iter()
+            .map(|id| self.0[id].clone())
+            .collect()
+    }
+}
+
 impl Session {
     pub fn query(&self, query: Query) -> Result<Answer> {
         let project = self.project();
@@ -66,23 +141,7 @@ impl Session {
             Query::GetProject => Answer::Project(ProjectAnswer {
                 id: project.id(),
                 version: self.version()?,
-                pages: project
-                    .pages()
-                    .map(|page| {
-                        let blocks = project.blocks(page.id)?;
-                        Ok(PageSummary {
-                            id: page.id,
-                            size: page.size,
-                            background: page.background,
-                            texts: blocks.len(),
-                            translated: blocks
-                                .iter()
-                                .filter_map(|(_, block)| block.translation.as_ref())
-                                .filter(|text| !text.content.text().trim().is_empty())
-                                .count(),
-                        })
-                    })
-                    .collect::<Result<_>>()?,
+                pages: self.page_summaries.ordered(&project),
             }),
             Query::GetPage { page } => Answer::Page(project.page(page)?.clone()),
             Query::GetLayer { layer } => Answer::Layer(Box::new(project.layer(layer)?.clone())),

@@ -2579,6 +2579,72 @@ fn a_font_change_at_a_caret_restyles_the_whole_text_and_is_undoable() {
 }
 
 #[test]
+fn outline_changes_at_a_caret_restyle_the_whole_text_and_are_undoable() {
+    let rich = json!([
+        {"insert": "Hello", "attributes": {"size": 30.0}},
+        {"insert": " world"}
+    ]);
+    let Some(mut fixture) = unscaled(typed_text(rich)) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    press_key(&mut fixture.canvas, NamedKey::End, Code::End, Modifiers::default());
+    let outline = koharu_scene::CharStyle {
+        stroke: Some(koharu_scene::Rgba([1.0, 0.0, 0.0, 1.0])),
+        stroke_width: Some(2.0),
+        outer_stroke: Some(koharu_scene::Rgba([0.0, 0.0, 0.0, 1.0])),
+        outer_stroke_width: Some(3.0),
+        ..Default::default()
+    };
+    let before = fixture.canvas.typing().unwrap().chars;
+    fixture.canvas.style_typing(&outline).expect("outlines");
+    type_chord(&mut fixture.canvas, "z", Code::KeyZ, CONTROL);
+    assert_eq!(fixture.canvas.typing().unwrap().chars, before);
+    type_chord(&mut fixture.canvas, "y", Code::KeyY, CONTROL);
+    type_text(&mut fixture.canvas, "!");
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["set_text"]);
+    let content: koharu_scene::RichText =
+        serde_json::from_value(layer(&fixture, text)["content"].clone()).expect("spans");
+    assert_eq!(content.text(), "Hello world!");
+    assert_eq!(content.0[0].attributes.size, Some(30.0));
+    for span in content.0 {
+        assert_eq!(span.attributes.stroke, outline.stroke);
+        assert_eq!(span.attributes.stroke_width, outline.stroke_width);
+        assert_eq!(span.attributes.outer_stroke, outline.outer_stroke);
+        assert_eq!(span.attributes.outer_stroke_width, outline.outer_stroke_width);
+    }
+}
+
+#[test]
+fn outline_changes_on_selected_characters_leave_other_characters_alone() {
+    let Some(mut fixture) = unscaled(typed_text(json!("Hello world"))) else {
+        return;
+    };
+    let text = layers(&fixture)[0];
+    fixture.canvas.set_tool(Tool::Text);
+    gesture(&mut fixture.canvas, (101.0, 220.0), (101.0, 220.0));
+    press_key(&mut fixture.canvas, NamedKey::Home, Code::Home, Modifiers::default());
+    for _ in 0..5 {
+        press_key(&mut fixture.canvas, NamedKey::ArrowRight, Code::ArrowRight, SHIFT);
+    }
+    fixture.canvas.style_typing(&koharu_scene::CharStyle {
+        outer_stroke_width: Some(3.0),
+        ..Default::default()
+    }).expect("an outline");
+    let effects = press_key(&mut fixture.canvas, NamedKey::Enter, Code::Enter, CONTROL);
+    assert_eq!(apply(&mut fixture, effects), ["set_text"]);
+    let content: koharu_scene::RichText =
+        serde_json::from_value(layer(&fixture, text)["content"].clone()).expect("spans");
+    assert_eq!(content.0[0].insert, "Hello");
+    assert_eq!(content.0[0].attributes.outer_stroke_width, Some(3.0));
+    assert_eq!(content.0[1].insert, " world");
+    assert_eq!(content.0[1].attributes.outer_stroke_width, None);
+}
+
+#[test]
 fn a_font_change_on_a_selection_only_restyles_that_selection() {
     let Some(mut fixture) = unscaled(typed_text(json!("Hello world"))) else {
         return;

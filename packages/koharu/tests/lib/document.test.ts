@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { dropMoves, lockTargets } from '@/lib/document'
+import { dropMoves, lockTargets, storyOrder } from '@/lib/document'
 import type { Layer } from '@koharu/ipc/protocol'
 
 /** A shown, unlocked layer of `kind` holding `children`, with only what dropping reads. */
@@ -52,5 +52,21 @@ describe('lockTargets', () => {
     expect(lockTargets([parent, separate], ['child', 'separate'], true)).toEqual(['separate'])
     child.locked = true
     expect(lockTargets([parent, separate], ['child', 'separate'], false)).toEqual([])
+  })
+})
+
+
+describe('storyOrder', () => {
+  it('matches the scene traversal, including hidden ancestors and reordered children', () => {
+    const hidden = layer('hidden', 'group', [layer('hidden-child', 'block')])
+    hidden.visible = false
+    const group = layer('group', 'group', [layer('a', 'text'), layer('b', 'block')])
+    const page = [group, hidden, layer('raster', 'raster'), layer('c', 'block')]
+    expect(storyOrder(page)).toEqual(['a', 'b', 'c'])
+    group.children!.reverse()
+    hidden.visible = true
+    expect(storyOrder(page)).toEqual(['b', 'a', 'hidden-child', 'c'])
+    group.children![0]!.visible = false
+    expect(storyOrder(page)).toEqual(['a', 'hidden-child', 'c'])
   })
 })
