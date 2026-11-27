@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "اختر صفحة للبدء.",
     "notice": {
+      "clone_needs_source": "حدد مصدر الاستنساخ بالنقر مع الضغط على Ctrl أو Command.",
       "eraser_needs_raster": "حدد طبقة نقطية للمسح."
     }
   },
@@ -71,6 +72,7 @@
     "opened": "عند الفتح",
     "steps": {
       "add_text": "إضافة نص",
+      "clone_stamp": "ختم الاستنساخ",
       "delete_layers": "حذف الطبقات",
       "delete_pages": "حذف الصفحات",
       "detect": "الكشف",
@@ -448,6 +450,8 @@
     "brushSizeInput": "حجم الفرشاة",
     "brushSizePixels": "حجم الفرشاة: {{size}} بكسل",
     "brushSizeShort": "{{size}} بكسل",
+    "clone_stamp": "ختم الاستنساخ",
+    "cloneSourceHint": "{{modifier}} + نقرة لتحديد المصدر",
     "color_picker": "منتقي الألوان",
     "decreaseBrushSize": "تقليل حجم الفرشاة",
     "direct_select": "التحديد المباشر",

@@ -93,7 +93,7 @@ export type Bounds = {
 	height: number,
 };
 
-/**  The brush the draw, eraser, and remove tools stroke with. */
+/**  The brush the draw, eraser, clone stamp, and remove tools stroke with. */
 export type Brush = {
 	/**  In page pixels. */
 	diameter: number,
@@ -436,7 +436,7 @@ export type NewLayer = {
 } & Content;
 
 /**  Why a gesture did nothing, for the app to say in the user's language. */
-export type Notice = "eraser_needs_raster";
+export type Notice = "eraser_needs_raster" | "clone_needs_source";
 
 export type Offset = {
 	x: number,
@@ -813,7 +813,7 @@ export type Tool = "select" | "direct_select" |
 /**  Photoshop's Lasso: marks a freehand shape of the page's pixels. */
 "lasso" | "text" | 
 /**  Draws a text block, for a text detection missed. */
-"block" | "draw" | "eraser" | "color_picker" | "remove" | "pan";
+"block" | "draw" | "eraser" | "clone_stamp" | "color_picker" | "remove" | "pan";
 
 /**  One transfer's whole state. */
 export type Transfer = {

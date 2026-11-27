@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "Выберите страницу, чтобы начать.",
     "notice": {
+      "clone_needs_source": "Выберите источник клонирования с помощью Ctrl или Command + щелчка.",
       "eraser_needs_raster": "Выберите растровый слой, чтобы стирать."
     }
   },
@@ -71,6 +72,7 @@
     "opened": "При открытии",
     "steps": {
       "add_text": "Добавление текста",
+      "clone_stamp": "Штамп",
       "delete_layers": "Удаление слоёв",
       "delete_pages": "Удаление страниц",
       "detect": "Обнаружение",
@@ -448,6 +450,8 @@
     "brushSizeInput": "Размер кисти",
     "brushSizePixels": "Размер кисти: {{size}} пикс.",
     "brushSizeShort": "{{size}} пкс",
+    "clone_stamp": "Штамп",
+    "cloneSourceHint": "{{modifier}} + щелчок для выбора источника",
     "color_picker": "Пипетка",
     "decreaseBrushSize": "Уменьшить размер кисти",
     "direct_select": "Стрелка",

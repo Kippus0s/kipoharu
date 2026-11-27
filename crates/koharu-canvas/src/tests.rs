@@ -612,6 +612,67 @@ fn a_stroke_paints_a_new_raster_where_it_ran() {
 }
 
 #[test]
+fn clone_stamp_uses_original_pixels_during_overlapping_strokes() {
+    let color = |x: u8| [x * 7, 255 - x * 7, 37, 255];
+    let pixels: Vec<u8> = (0..8).flat_map(|_| (0..32).flat_map(color)).collect();
+    let Some(mut fixture) = unscaled_of((100, 100), vec![
+        json!({"op": "add_layer", "id": "$raster", "page": "$page", "index": 0,
+            "layer": {"kind": "raster", "offset": {"x": 10, "y": 10}}}),
+        json!({"op": "write_pixels", "layer": "$raster",
+            "rect": {"x": 0, "y": 0, "width": 32, "height": 8}, "pixels": pixels}),
+    ]) else {
+        return;
+    };
+    let raster = layers(&fixture)[0];
+    fixture.canvas.select(vec![raster]);
+    fixture.canvas.set_tool(Tool::CloneStamp);
+    // Clone uses coverage, not the brush's color or alpha.
+    fixture.canvas.set_brush(brush(6.0, [0.0, 0.0, 0.0, 0.0]));
+    assert!(matches!(
+        fixture.canvas.input(down((18.5, 14.5), Modifiers::default())).unwrap().as_slice(),
+        [Effect::Notice(Notice::CloneNeedsSource)]
+    ));
+    assert!(fixture.canvas.input(down((14.5, 14.5), CONTROL)).unwrap().is_empty());
+    assert!(fixture.canvas.input(up(1, (14.5, 14.5))).unwrap().is_empty());
+    fixture.canvas.input(down((18.5, 14.5), Modifiers::default())).unwrap();
+    fixture.canvas.input(drag(1, (30.5, 14.5))).unwrap();
+    fixture.canvas.draw().expect("clone preview");
+    let preview = fixture.canvas.snapshot().expect("preview pixels");
+    assert_eq!(preview.get_pixel(20, 14).0, color(6));
+    let effects = fixture.canvas.input(up(1, (30.5, 14.5))).unwrap();
+    assert_eq!(apply(&mut fixture, effects), ["clone_stamp"]);
+    // Destination own x=8..20 must use the pre-stroke x=4..16, even where
+    // those source pixels were overwritten by the same stroke.
+    for x in 8..=20 {
+        assert_eq!(pixel(&fixture, raster, (x, 4)), color((x - 4) as u8));
+    }
+    let effects = gesture(&mut fixture.canvas, (50.5, 25.5), (50.5, 25.5));
+    assert_eq!(apply(&mut fixture, effects), ["clone_stamp"]);
+    assert_eq!(pixel(&fixture, raster, (40, 15)), color(4));
+}
+
+#[test]
+fn clone_stamp_creates_a_raster_and_stops_at_the_source_edge() {
+    let Some(mut fixture) = unscaled_of((100, 100), vec![
+        shape(0, (0.0, 0.0, 10.0, 100.0), json!({})),
+    ]) else {
+        return;
+    };
+    fixture.canvas.set_tool(Tool::CloneStamp);
+    fixture.canvas.set_brush(brush(6.0, [0.0, 0.0, 0.0, 1.0]));
+    fixture.canvas.input(down((1.5, 40.5), CONTROL)).unwrap();
+    fixture.canvas.input(up(1, (1.5, 40.5))).unwrap();
+    let effects = gesture(&mut fixture.canvas, (50.5, 50.5), (50.5, 50.5));
+    assert_eq!(apply(&mut fixture, effects), ["clone_stamp"]);
+    let raster = layers(&fixture)[1];
+    assert_eq!(fixture.canvas.selection(), [raster]);
+    assert_eq!(pixel(&fixture, raster, (50, 50)), [255, 0, 0, 255]);
+    // At x=48, the brush still covers the destination, but source x=-1
+    // is outside the page and must not be painted white or wrapped.
+    assert_eq!(pixel(&fixture, raster, (48, 50)), [0; 4]);
+}
+
+#[test]
 fn fine_ink_preview_matches_the_committed_raster() {
     for existing in [false, true] {
         let ops = if existing { offset_raster() } else { Vec::new() };

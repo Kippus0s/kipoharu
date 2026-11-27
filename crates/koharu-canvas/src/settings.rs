@@ -23,6 +23,7 @@ pub enum Tool {
     Block,
     Draw,
     Eraser,
+    CloneStamp,
     ColorPicker,
     Remove,
     Pan,
@@ -31,7 +32,7 @@ pub enum Tool {
 impl Tool {
     /// Whether it strokes with the brush.
     pub(crate) fn is_brush(self) -> bool {
-        matches!(self, Self::Draw | Self::Eraser | Self::Remove)
+        matches!(self, Self::Draw | Self::Eraser | Self::CloneStamp | Self::Remove)
     }
 
     /// The pointer's shape over the canvas with nothing under it, in CSS's
@@ -40,7 +41,7 @@ impl Tool {
         match self {
             Self::Select | Self::DirectSelect => Some(CursorIcon::Default),
             Self::Text => Some(CursorIcon::Text),
-            Self::Draw | Self::Eraser | Self::Remove => None,
+            Self::Draw | Self::Eraser | Self::CloneStamp | Self::Remove => None,
             Self::Marquee | Self::Lasso | Self::Block | Self::ColorPicker => {
                 Some(CursorIcon::Crosshair)
             }
@@ -49,7 +50,7 @@ impl Tool {
     }
 }
 
-/// The brush the draw, eraser, and remove tools stroke with.
+/// The brush the draw, eraser, clone stamp, and remove tools stroke with.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Type)]
 pub struct Brush {
     /// In page pixels.

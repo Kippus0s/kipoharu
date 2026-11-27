@@ -312,6 +312,18 @@ impl<'a, 'g> Overlay<'a, 'g> {
         self.stroked(ring, Color::WHITE, &Circle::new(at, radius));
     }
 
+    /// The clone stamp's source ring and cross, distinct from the brush tip.
+    pub fn clone_source(&mut self, at: Point, diameter: f64) {
+        let at = self.view.to_screen() * at;
+        self.ring(at, diameter);
+        let scale = self.view.scale();
+        for arm in [Vec2::new(4.0 * scale, 0.0), Vec2::new(0.0, 4.0 * scale)] {
+            let line = Line::new(at - arm, at + arm);
+            self.stroked(Stroke::new(3.0 * scale), Color::BLACK, &line);
+            self.stroked(Stroke::new(scale), Color::WHITE, &line);
+        }
+    }
+
     /// `frame` painted through `transform` in page space, then the camera,
     /// over what the viewport shows.
     pub fn frame(&mut self, frame: &Frame, transform: Affine) -> anyhow::Result<()> {

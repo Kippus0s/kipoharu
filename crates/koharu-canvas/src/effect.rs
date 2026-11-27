@@ -41,4 +41,5 @@ pub enum Effect {
 #[serde(rename_all = "snake_case")]
 pub enum Notice {
     EraserNeedsRaster,
+    CloneNeedsSource,
 }

@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "请选择页面以开始。",
     "notice": {
+      "clone_needs_source": "请按住 Ctrl 或 Command 单击设置仿制源。",
       "eraser_needs_raster": "请先选择栅格图层再擦除。"
     }
   },
@@ -71,6 +72,7 @@
     "opened": "打开时",
     "steps": {
       "add_text": "添加文字",
+      "clone_stamp": "仿制图章",
       "delete_layers": "删除图层",
       "delete_pages": "删除页面",
       "detect": "检测",
@@ -448,6 +450,8 @@
     "brushSizeInput": "画笔大小",
     "brushSizePixels": "画笔大小：{{size}} 像素",
     "brushSizeShort": "{{size}} 像素",
+    "clone_stamp": "仿制图章",
+    "cloneSourceHint": "{{modifier}} + 单击设置采样源",
     "color_picker": "取色器",
     "decreaseBrushSize": "减小画笔大小",
     "direct_select": "直接选择",

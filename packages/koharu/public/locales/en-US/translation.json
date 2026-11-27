@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "Select a page to begin.",
     "notice": {
+      "clone_needs_source": "Set a clone source with Ctrl or Command + click.",
       "eraser_needs_raster": "Select a raster layer to erase."
     }
   },
@@ -81,6 +82,7 @@
     "opened": "Opened",
     "steps": {
       "add_text": "Add text",
+      "clone_stamp": "Clone Stamp",
       "delete_layers": "Delete layers",
       "delete_pages": "Delete pages",
       "duplicate_layer": "Duplicate text box",
@@ -460,6 +462,8 @@
     "brushSizeInput": "Brush size",
     "brushSizePixels": "Brush size: {{size}} pixels",
     "brushSizeShort": "{{size}} px",
+    "clone_stamp": "Clone Stamp",
+    "cloneSourceHint": "{{modifier}} + click to set source",
     "color_picker": "Color picker",
     "decreaseBrushSize": "Decrease brush size",
     "direct_select": "Direct Selection",

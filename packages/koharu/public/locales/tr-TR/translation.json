@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "Başlamak için bir sayfa seçin.",
     "notice": {
+      "clone_needs_source": "Ctrl veya Command tuşuna basıp tıklayarak klon kaynağını belirleyin.",
       "eraser_needs_raster": "Silmek için bir raster katman seçin."
     }
   },
@@ -71,6 +72,7 @@
     "opened": "Açıldığında",
     "steps": {
       "add_text": "Metin ekle",
+      "clone_stamp": "Klonlama damgası",
       "delete_layers": "Katmanları sil",
       "delete_pages": "Sayfaları sil",
       "detect": "Algılama",
@@ -448,6 +450,8 @@
     "brushSizeInput": "Fırça boyutu",
     "brushSizePixels": "Fırça boyutu: {{size}} piksel",
     "brushSizeShort": "{{size}} px",
+    "clone_stamp": "Klonlama damgası",
+    "cloneSourceHint": "Kaynağı ayarlamak için {{modifier}} + tıkla",
     "color_picker": "Renk seçici",
     "decreaseBrushSize": "Fırça boyutunu azalt",
     "direct_select": "Doğrudan Seçim",

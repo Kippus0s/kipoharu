@@ -151,6 +151,7 @@ impl App {
                         "t" => Tool::Text,
                         "b" => Tool::Draw,
                         "e" => Tool::Eraser,
+                        "c" => Tool::CloneStamp,
                         "i" => Tool::ColorPicker,
                         "j" => Tool::Remove,
                         "h" => Tool::Pan,

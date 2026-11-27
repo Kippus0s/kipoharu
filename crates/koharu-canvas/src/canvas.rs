@@ -52,6 +52,8 @@ pub struct Canvas {
     snapshot: Option<Snapshot>,
     tool: Tool,
     brush: Brush,
+    /// The clone stamp source, in page pixels; another page drops it.
+    clone_source: Option<Point>,
     story: Story,
     show_original: bool,
     /// Story's numbers laid out, by number and whether it's a sound
@@ -103,6 +105,7 @@ struct Look {
     area: u64,
     /// Where the brush's ring is, in the viewport.
     ring: Option<Point>,
+    clone_source: Option<Point>,
     gesture: GestureLook,
     /// The typing session's changes, and whether its caret shows.
     typing: Option<(u64, bool)>,
@@ -124,6 +127,7 @@ impl Canvas {
             snapshot: None,
             tool: Tool::default(),
             brush: Brush::default(),
+            clone_source: None,
             story: Story::default(),
             show_original: false,
             numbers: RefCell::new(HashMap::new()),
@@ -181,6 +185,7 @@ impl Canvas {
             _ => {}
         }
         if other {
+            self.clone_source = None;
             self.deselect();
         }
         self.snapshot = Some(snapshot);
@@ -660,6 +665,17 @@ impl Canvas {
             }
             return Ok(self.commit_typing());
         }
+        if primary && self.tool == Tool::CloneStamp && tools::command(sample.modifiers) {
+            if let Some(snapshot) = &self.snapshot
+                && snapshot.size().to_rect().contains(sample.page)
+            {
+                self.clone_source = Some(Point::new(
+                    sample.page.x.floor() + 0.5,
+                    sample.page.y.floor() + 0.5,
+                ));
+            }
+            return Ok(effects);
+        }
         let Some(cx) = self.context() else {
             return Ok(effects);
         };
@@ -698,7 +714,7 @@ impl Canvas {
                 Press::answers(tools::picker::pick(&cx, sample)?)
             }
             (tool, Some(PointerButton::Primary)) if tool.is_brush() => {
-                tools::brush::press(&cx, sample)
+                tools::brush::press(&cx, sample, self.clone_source)
             }
             _ => Press::default(),
         };
@@ -831,11 +847,12 @@ impl Canvas {
             return Ok(None);
         }
         let gpu = Gpu::get()?;
-        let mut drawing = gpu.drawing(width as u16, height as u16);
+        // Clone preview can rasterize its source, so acquire the drawing only afterward.
         let ink = match (&self.gesture, self.context()) {
             (Some(active), Some(cx)) if !self.show_original => active.gesture.raster_preview(&cx)?,
             _ => None,
         };
+        let mut drawing = gpu.drawing(width as u16, height as u16);
         self.base(&mut drawing);
         self.page(&mut drawing, ink.as_ref())?;
         if !self.show_original {
@@ -874,11 +891,25 @@ impl Canvas {
                 .pointer
                 .filter(|_| self.tool.is_brush())
                 .map(|sample| sample.screen),
+            clone_source: self.clone_marker(),
             gesture: gesture.map_or(GestureLook::None, Gesture::look),
             typing: self
                 .typing
                 .as_ref()
                 .map(|typing| (typing.version(), typing.caret_shows(Instant::now()))),
+        }
+    }
+
+    /// The source tracks the current stroke, returning to the picked point
+    /// when the stroke ends (non-aligned cloning).
+    fn clone_marker(&self) -> Option<Point> {
+        if self.tool != Tool::CloneStamp || self.show_original {
+            return None;
+        }
+        if let Some(Active { gesture: Gesture::Stroke(stroke), .. }) = &self.gesture {
+            stroke.clone_marker()
+        } else {
+            self.clone_source
         }
     }
 
@@ -1021,6 +1052,9 @@ impl Canvas {
             && let Some(sample) = self.pointer
         {
             overlay.ring(sample.screen, self.brush.diameter);
+        }
+        if let Some(source) = self.clone_marker() {
+            overlay.clone_source(source, self.brush.diameter);
         }
         Ok(())
     }

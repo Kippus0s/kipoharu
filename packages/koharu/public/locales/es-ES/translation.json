@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "Selecciona una página para empezar.",
     "notice": {
+      "clone_needs_source": "Fija el origen con Ctrl o Command + clic.",
       "eraser_needs_raster": "Selecciona una capa ráster para borrar."
     }
   },
@@ -71,6 +72,7 @@
     "opened": "Al abrir",
     "steps": {
       "add_text": "Añadir texto",
+      "clone_stamp": "Tampón de clonar",
       "delete_layers": "Eliminar capas",
       "delete_pages": "Eliminar páginas",
       "detect": "Detección",
@@ -448,6 +450,8 @@
     "brushSizeInput": "Tamaño del pincel",
     "brushSizePixels": "Tamaño del pincel: {{size}} píxeles",
     "brushSizeShort": "{{size}} px",
+    "clone_stamp": "Tampón de clonar",
+    "cloneSourceHint": "{{modifier}} + clic para fijar el origen",
     "color_picker": "Selector de color",
     "decreaseBrushSize": "Reducir tamaño del pincel",
     "direct_select": "Selección directa",

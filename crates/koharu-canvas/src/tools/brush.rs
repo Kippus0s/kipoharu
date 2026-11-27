@@ -1,4 +1,4 @@
-//! Draw, eraser, and remove: stroke outlines and page-pixel coverage.
+//! Draw, eraser, clone stamp, and remove: stroke outlines and page-pixel coverage.
 //! Ink previews the same raster write that is committed; mask and removal
 //! tools retain their coverage overlays.
 
@@ -26,10 +26,26 @@ use crate::{
 const TOLERANCE: f64 = 0.1;
 
 /// A brush tool's press starts a stroke: the draw tool's onto the one
-/// selected raster or a new one, the eraser's onto the one selected.
-pub(crate) fn press(cx: &Context, sample: Sample) -> Press {
+/// selected raster or a new one, as with clone stamp; the eraser's onto the one selected.
+pub(crate) fn press(cx: &Context, sample: Sample, clone_source: Option<Point>) -> Press {
+    let clone = if cx.tool == Tool::CloneStamp {
+        let Some(source) = clone_source else {
+            return Press::answers(vec![Effect::Notice(Notice::CloneNeedsSource)]);
+        };
+        Some(CloneSource {
+            offset: Vec2::new(
+                source.x.floor() - sample.page.x.floor(),
+                source.y.floor() - sample.page.y.floor(),
+            ),
+            pixels: RefCell::new(None),
+        })
+    } else {
+        None
+    };
     let target = cx.selection.single().filter(|&layer| {
-        cx.snapshot.writable(layer).is_some()
+        cx.snapshot.writable(layer).is_some_and(|(_, format)| {
+            cx.tool != Tool::CloneStamp || format == PixelFormat::Rgba8
+        })
             && (cx.tool != Tool::Remove
                 || matches!(
                     cx.snapshot.layer(layer).map(|layer| &layer.content),
@@ -39,7 +55,7 @@ pub(crate) fn press(cx: &Context, sample: Sample) -> Press {
     if cx.tool == Tool::Eraser && target.is_none() {
         return Press::answers(vec![Effect::Notice(Notice::EraserNeedsRaster)]);
     }
-    let ink = cx.tool == Tool::Draw && target
+    let ink = matches!(cx.tool, Tool::Draw | Tool::CloneStamp) && target
         .and_then(|layer| cx.snapshot.writable(layer))
         .is_none_or(|(_, format)| format == PixelFormat::Rgba8);
     let points = vec![sample.page];
@@ -49,26 +65,41 @@ pub(crate) fn press(cx: &Context, sample: Sample) -> Press {
         ink,
         brush: cx.brush,
         source: RefCell::new(None),
+        clone,
         points,
         target,
     }))
 }
 
-/// A brush stroke through page points, onto `target` or, for the draw tool
-/// with none, a new raster.
+/// A brush stroke through page points, onto `target` or, for ink with
+/// none, a new raster.
 pub(crate) struct Stroke {
     tool: Tool,
     ink: bool,
     brush: Brush,
     /// The original decoded tiles, unchanged throughout this gesture.
     source: RefCell<Option<Tiles>>,
+    clone: Option<CloneSource>,
     points: Vec<Point>,
     target: Option<LayerId>,
     /// The points' outline, expanded again only when a point arrives.
     outline: BezPath,
 }
 
+/// The integer source-to-destination offset and the unmodified page pixels.
+/// Read the composite once per gesture, never from its transient preview.
+struct CloneSource {
+    offset: Vec2,
+    pixels: RefCell<Option<RgbaImage>>,
+}
+
 impl Stroke {
+    pub fn clone_marker(&self) -> Option<Point> {
+        let at = self.points.last()?;
+        let offset = self.clone.as_ref()?.offset;
+        Some(Point::new(at.x.floor() + 0.5, at.y.floor() + 0.5) + offset)
+    }
+
     pub fn moved(&mut self, cx: &Context, samples: &[Sample]) -> Vec<Effect> {
         let before = self.points.len();
         for sample in samples {
@@ -138,11 +169,13 @@ impl Stroke {
                 ..rect
             };
             let session = cx.session.lock();
-            let pixels = self.ink_pixels(own, &coverage, Some(session.pixels(layer, own)?))?;
+            let under = session.pixels(layer, own)?;
             let mut source = self.source.borrow_mut();
             if source.is_none() {
                 *source = Some(session.tiles(layer, None)?);
             }
+            drop(session);
+            let pixels = self.ink_pixels(cx, rect, &coverage, Some(under))?;
             (source.as_ref().expect("source tiles").clone(), own, pixels)
         } else {
             let tiles = Tiles {
@@ -150,7 +183,7 @@ impl Stroke {
                 format: PixelFormat::Rgba8,
                 tiles: Vec::new(),
             };
-            (tiles, rect, self.ink_pixels(rect, &coverage, None)?)
+            (tiles, rect, self.ink_pixels(cx, rect, &coverage, None)?)
         };
         let page = cx.snapshot.page();
         let index = page.raster_insert_index() + if page.background.is_some() { 1 } else { 0 };
@@ -161,20 +194,48 @@ impl Stroke {
 
     fn stroke_coverage(&self, cx: &Context) -> Option<(koharu_scene::Rect, Vec<u8>)> {
         let page = cx.snapshot.size();
-        if self.ink && self.brush.diameter <= 4.0 {
-            supersampled_coverage(&self.outline, page)
+        let (rect, mut coverage) = if self.ink && self.brush.diameter <= 4.0 {
+            supersampled_coverage(&self.outline, page)?
         } else {
-            coverage(&self.outline, page)
+            coverage(&self.outline, page)?
+        };
+        if let Some(clone) = &self.clone {
+            // An image source does not wrap or paint outside the page.
+            for (i, alpha) in coverage.iter_mut().enumerate() {
+                let x = f64::from(rect.x) + (i % rect.width as usize) as f64 + clone.offset.x;
+                let y = f64::from(rect.y) + (i / rect.width as usize) as f64 + clone.offset.y;
+                if !(0.0..page.width).contains(&x) || !(0.0..page.height).contains(&y) {
+                    *alpha = 0;
+                }
+            }
+            if !coverage.iter().any(|&alpha| alpha != 0) {
+                return None;
+            }
         }
+        Some((rect, coverage))
     }
 
     fn ink_pixels(
         &self,
+        cx: &Context,
         rect: koharu_scene::Rect,
         coverage: &[u8],
         under: Option<Vec<u8>>,
     ) -> anyhow::Result<Vec<u8>> {
-        let ink = paint(rect, coverage, self.brush.color);
+        let ink = if let Some(clone) = &self.clone {
+            let mut pixels = clone.pixels.borrow_mut();
+            if pixels.is_none() {
+                *pixels = Some(cx.snapshot.frame().rasterize_rect(cx.snapshot.size().to_rect())?);
+            }
+            clone_pixels(
+                pixels.as_ref().expect("source pixels"),
+                clone.offset,
+                rect,
+                coverage,
+            )
+        } else {
+            paint(rect, coverage, self.brush.color)
+        };
         if let Some(pixels) = under {
             let mut under = RgbaImage::from_raw(rect.width, rect.height, pixels)
                 .ok_or_else(|| anyhow::anyhow!("a raster's pixels are RGBA"))?;
@@ -206,6 +267,7 @@ impl Stroke {
     ) -> anyhow::Result<Vec<Effect>> {
         let label = match self.tool {
             Tool::Draw => "paint",
+            Tool::CloneStamp => "clone_stamp",
             _ => "erase",
         };
         let target = self
@@ -220,8 +282,8 @@ impl Stroke {
                 };
                 let mut pixels = cx.session.lock().pixels(layer, own)?;
                 match (self.tool, format) {
-                    (Tool::Draw, PixelFormat::Rgba8) => {
-                        pixels = self.ink_pixels(own, coverage, Some(pixels))?;
+                    (Tool::Draw | Tool::CloneStamp, PixelFormat::Rgba8) => {
+                        pixels = self.ink_pixels(cx, rect, coverage, Some(pixels))?;
                     }
                     (Tool::Draw, PixelFormat::Gray8) => {
                         uncovered(&mut pixels, coverage, cx.brush.color.0[3]);
@@ -236,8 +298,8 @@ impl Stroke {
                 };
                 (vec![write], None)
             }
-            None if self.tool == Tool::Draw => {
-                let pixels = self.ink_pixels(rect, coverage, None)?;
+            None if self.ink => {
+                let pixels = self.ink_pixels(cx, rect, coverage, None)?;
                 let (id, add) = added(cx.snapshot.page(), None, Content::Raster(Raster::default()));
                 let write = Op::WritePixels {
                     layer: Ref::from(id),
@@ -256,6 +318,35 @@ impl Stroke {
             .chain(created.map(|id| Effect::Selection(vec![id])))
             .collect())
     }
+}
+
+/// Copy whole source pixels, without resampling, with the brush's coverage.
+/// Like the canvas and eyedropper, the visible page is over white.
+fn clone_pixels(
+    source: &RgbaImage,
+    offset: Vec2,
+    rect: koharu_scene::Rect,
+    coverage: &[u8],
+) -> RgbaImage {
+    let mut ink = RgbaImage::new(rect.width, rect.height);
+    for (i, (x, y, pixel)) in ink.enumerate_pixels_mut().enumerate() {
+        let sx = i64::from(rect.x) + i64::from(x) + offset.x as i64;
+        let sy = i64::from(rect.y) + i64::from(y) + offset.y as i64;
+        if coverage[i] == 0
+            || sx < 0
+            || sy < 0
+            || sx >= i64::from(source.width())
+            || sy >= i64::from(source.height())
+        {
+            continue;
+        }
+        let [r, g, b, a] = source.get_pixel(sx as u32, sy as u32).0;
+        let over_white = |channel: u8| {
+            ((u32::from(channel) * u32::from(a) + 255 * (255 - u32::from(a)) + 127) / 255) as u8
+        };
+        *pixel = image::Rgba([over_white(r), over_white(g), over_white(b), coverage[i]]);
+    }
+    ink
 }
 
 /// A round stroke through `points`, `diameter` wide, as the outline it
@@ -447,6 +538,21 @@ fn uncovered(pixels: &mut [u8], coverage: &[u8], alpha: f32) {
 mod tests {
     use super::*;
     use kurbo::PathEl;
+
+    #[test]
+    fn clone_copies_integer_pixels_and_does_not_wrap() {
+        let source = RgbaImage::from_raw(
+            3,
+            1,
+            vec![17, 53, 199, 255, 123, 44, 7, 255, 0, 0, 0, 128],
+        ).unwrap();
+        let rect = koharu_scene::Rect { x: 10, y: 3, width: 5, height: 1 };
+        let ink = clone_pixels(&source, Vec2::new(-11.0, -3.0), rect, &[255, 255, 64, 255, 255]);
+        assert_eq!(ink.into_raw(), vec![
+            0, 0, 0, 0, 17, 53, 199, 255, 123, 44, 7, 64,
+            127, 127, 127, 255, 0, 0, 0, 0,
+        ]);
+    }
 
     #[test]
     fn fine_ink_keeps_coverage_and_color() {

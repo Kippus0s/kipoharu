@@ -13,6 +13,7 @@ import {
   ScanText,
   SplinePointer,
   SquareDashed,
+  Stamp,
   Type,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -74,6 +75,7 @@ const tools = [
   ['block', ScanText],
   ['draw', Brush],
   ['eraser', Eraser],
+  ['clone_stamp', Stamp],
   ['color_picker', Pipette],
   ['remove', Remove],
   ['pan', Hand],
@@ -113,6 +115,11 @@ export function ToolBar() {
               <TooltipContent side='right'>
                 {t(`tools.${tool}`)}
                 <span className='ml-2 opacity-60'>{shortcutLabel(toolKeys[tool])}</span>
+                {tool === 'clone_stamp' && (
+                  <div className='mt-1 opacity-80'>
+                    {t('tools.cloneSourceHint', { modifier: shortcutLabel('mod') })}
+                  </div>
+                )}
               </TooltipContent>
             </Tooltip>
           </div>

@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "先选一页，就好开始。",
     "notice": {
+      "clone_needs_source": "请按牢 Ctrl 或 Command 点一下设定仿制源。",
       "eraser_needs_raster": "先选一个栅格图层，再好擦。"
     }
   },
@@ -71,6 +72,7 @@
     "opened": "打开辰光",
     "steps": {
       "add_text": "加文字",
+      "clone_stamp": "仿制图章",
       "delete_layers": "删脱图层",
       "delete_pages": "删脱页面",
       "detect": "检测",
@@ -448,6 +450,8 @@
     "brushSizeInput": "笔刷大小",
     "brushSizePixels": "笔刷大小：{{size}} 像素",
     "brushSizeShort": "{{size}} px",
+    "clone_stamp": "仿制图章",
+    "cloneSourceHint": "{{modifier}} + 点一下设定采样源",
     "color_picker": "取色器",
     "decreaseBrushSize": "拿笔刷调小点",
     "direct_select": "直接选择",

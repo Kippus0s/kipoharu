@@ -45,6 +45,12 @@ Inspect the result at normal reading size and high zoom. Look for glyph fragment
 
 To start a text over, delete its text block: its clean-up goes with it and the original lettering shows again.
 
+## Clone pixels manually
+
+Choose **Clone Stamp** (`C`). Hold `Ctrl` (or `Command` on macOS) and click a clean source point, then drag where you want to copy it. The source marker moves with the brush and returns to the chosen point for the next stroke. Use the brush size control or `Alt` + scroll to change the diameter.
+
+The stamp samples the visible page at its original pixel resolution, including prior touch-ups. It paints onto the selected editable color raster or creates a new raster if none is selected. Each stroke is one undo step. Clear the layer selection first to keep the original layer unchanged.
+
 ## Choose a model
 
 Choose the inpainting model in **Settings → Pipeline**. **LaMa** is the default and takes no prompt. **FLUX.3 Klein** and **Qwen-Image 2.1 Turbo** are generative alternatives that follow the **Prompt** there and need more memory and time. See [vision and inpainting models](/models/vision).

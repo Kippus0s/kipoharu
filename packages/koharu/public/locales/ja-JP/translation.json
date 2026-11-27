@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "ページを選択して開始します。",
     "notice": {
+      "clone_needs_source": "Ctrl または Command + クリックでコピー元を指定してください。",
       "eraser_needs_raster": "消去するにはラスターレイヤーを選択してください。"
     }
   },
@@ -71,6 +72,7 @@
     "opened": "開いた状態",
     "steps": {
       "add_text": "テキストを追加",
+      "clone_stamp": "コピースタンプ",
       "delete_layers": "レイヤーを削除",
       "delete_pages": "ページを削除",
       "detect": "検出",
@@ -448,6 +450,8 @@
     "brushSizeInput": "ブラシサイズ",
     "brushSizePixels": "ブラシサイズ: {{size}}ピクセル",
     "brushSizeShort": "{{size}} px",
+    "clone_stamp": "コピースタンプ",
+    "cloneSourceHint": "{{modifier}} + クリックでコピー元を指定",
     "color_picker": "カラーピッカー",
     "decreaseBrushSize": "ブラシサイズを縮小",
     "direct_select": "パス選択",

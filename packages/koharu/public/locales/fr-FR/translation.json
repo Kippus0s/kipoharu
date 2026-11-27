@@ -20,6 +20,7 @@
   "canvas": {
     "empty": "Sélectionnez une page pour commencer.",
     "notice": {
+      "clone_needs_source": "Définissez la source avec Ctrl ou Command + clic.",
       "eraser_needs_raster": "Sélectionnez un calque matriciel pour effacer."
     }
   },
@@ -71,6 +72,7 @@
     "opened": "À l’ouverture",
     "steps": {
       "add_text": "Ajouter du texte",
+      "clone_stamp": "Tampon de duplication",
       "delete_layers": "Supprimer des calques",
       "delete_pages": "Supprimer des pages",
       "detect": "Détection",
@@ -448,6 +450,8 @@
     "brushSizeInput": "Taille du pinceau",
     "brushSizePixels": "Taille du pinceau : {{size}} pixels",
     "brushSizeShort": "{{size}} px",
+    "clone_stamp": "Tampon de duplication",
+    "cloneSourceHint": "{{modifier}} + clic pour définir la source",
     "color_picker": "Pipette",
     "decreaseBrushSize": "Réduire la taille du pinceau",
     "direct_select": "Sélection directe",
