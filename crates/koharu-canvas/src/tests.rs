@@ -1269,6 +1269,82 @@ fn alt_wheel_transitions_best_fit_from_rendered_size() {
 }
 
 #[test]
+fn best_fit_font_change_preserves_both_rendered_outlines() {
+    let Some(mut fixture) = unscaled(vec![json!({"op": "add_layer", "page": "$page",
+        "index": 0, "layer": {
+            "kind": "text", "content": [
+                {"insert": "WW", "attributes": {"family": "Arial", "stroke_width": 2}},
+                {"insert": "WW"}
+            ],
+            "style": {"chars": {"family": "Arial", "size": 12,
+                "stroke": [1.0, 1.0, 1.0, 1.0], "stroke_width": 3,
+                "outer_stroke": [0.0, 0.0, 0.0, 1.0], "outer_stroke_width": 5}},
+            "frame": {"box": {"bounds": {"x": 50, "y": 50, "width": 100, "height": 100}, "fit": "best"}}
+        }
+    })]) else {
+        return;
+    };
+    let id = layers(&fixture)[0];
+    let before = layer(&fixture, id);
+    let old_scale = rendered_size(&fixture, id) / 12.0;
+    let spans = serde_json::from_value(json!([
+        {"insert": "WW", "attributes": {"stroke_width": 2}}, {"insert": "WW"}
+    ])).expect("unmarked family spans");
+    let ops = vec![
+        Op::UpdateLayer {
+            layer: id.into(),
+            patch: json!({"style": {"chars": {"family": "Courier New", "weight": 400, "italic": false}}}),
+        },
+        Op::SetRichText { layer: id.into(), spans },
+    ];
+    assert_eq!(apply(&mut fixture, vec![Effect::Edit(Edit {
+        label: "set_style".into(), ops,
+    })]), ["set_style"]);
+    let after = layer(&fixture, id);
+    let new_scale = rendered_size(&fixture, id) / 12.0;
+    assert_eq!(after["frame"], before["frame"]);
+    assert_eq!(after["style"]["chars"]["family"], "Courier New");
+    for (key, width) in [("stroke_width", 3.0), ("outer_stroke_width", 5.0)] {
+        let nominal = after["style"]["chars"][key].as_f64().unwrap();
+        assert!((nominal * new_scale - width * old_scale).abs() < 0.001);
+    }
+    let marked = after["content"][0]["attributes"]["stroke_width"].as_f64().unwrap();
+    assert!((marked * new_scale - 2.0 * old_scale).abs() < 0.001);
+    fixture.session.lock().undo().expect("undo font change");
+    fixture.render();
+    assert_eq!(layer(&fixture, id), before);
+
+    // The active typing path keeps inherited widths through its own undo/redo.
+    let text: koharu_scene::Text = {
+        let project = fixture.session.lock().project();
+        let layer = project.layer(id).expect("layer");
+        match &layer.content {
+            koharu_scene::Content::Text(text) => text.as_ref().clone(),
+            _ => panic!("text layer"),
+        }
+    };
+    let mut typing = crate::typing::Typing::layer(&fixture.renderer, id, &text, false)
+        .expect("typing");
+    let old = typing.typed();
+    typing.style(&koharu_scene::CharStyle {
+        family: Some("Courier New".to_owned()),
+        ..Default::default()
+    }).expect("font change");
+    let new = typing.typed();
+    for (before, after) in [
+        (old.chars.stroke_width, new.chars.stroke_width),
+        (old.chars.outer_stroke_width, new.chars.outer_stroke_width),
+    ] {
+        assert!((before.unwrap() * f64::from(old.scale)
+            - after.unwrap() * f64::from(new.scale)).abs() < 0.001);
+    }
+    typing.undo().expect("undo");
+    assert_eq!(typing.typed().chars, old.chars);
+    typing.redo().expect("redo");
+    assert_eq!(typing.typed().chars, new.chars);
+}
+
+#[test]
 fn explicit_proportional_and_manual_fixed_size_keep_best_fit_frame() {
     let Some(mut fixture) = unscaled(vec![
         json!({"op": "add_layer", "page": "$page", "index": 0, "layer": {

@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Result, ensure};
-use koharu_scene::{Content, Edit, Fit, Frame, LayerId, Op, PathFit, Project, Span, Text};
+use koharu_scene::{CharStyle, Content, Edit, Fit, Frame, LayerId, Op, PathFit, Project, Span, Text};
 use serde_json::{Value, json};
 
 use super::Renderer;
@@ -21,7 +21,8 @@ impl Renderer {
         }
         let mut ops = Vec::new();
         let mut normalized = HashMap::new();
-        for mut op in std::mem::take(&mut edit.ops) {
+        let mut pending = std::mem::take(&mut edit.ops).into_iter().peekable();
+        while let Some(mut op) = pending.next() {
             match &mut op {
                 Op::UpdateLayer { layer, patch } => {
                     if let Some(id) = layer.uuid().map(LayerId)
@@ -67,6 +68,54 @@ impl Renderer {
                                         layer: layer.clone(),
                                         spans,
                                     });
+                                }
+                            }
+                        } else if let Some((text, translation)) = target
+                            && sizing
+                            && text.is_best_fit()
+                            && let Some(face) = family_change(translation, patch)
+                        {
+                            // The picker can also adjust weight and italic to match the new face.
+                            // Use the actual resulting spans, including any marks cleared by the picker.
+                            let mut fitted = text.clone();
+                            fitted.style.chars = face.or(&text.style.chars);
+                            let mut next_spans = match pending.peek_mut() {
+                                Some(Op::SetRichText { layer: next, spans }) if next == layer => {
+                                    Some(spans)
+                                }
+                                _ => None,
+                            };
+                            if let Some(spans) = next_spans.as_ref() {
+                                fitted.content.0 = (**spans).clone();
+                            }
+                            if let (Some(before), Some(after)) =
+                                (self.layout(id, text)?, self.layout(id, &fitted)?)
+                            {
+                                let ratio = f64::from(before.scale) / f64::from(after.scale);
+                                if ratio.is_finite() && ratio > 0.0 && ratio != 1.0 {
+                                    let local = if translation {
+                                        &mut patch["translation"]
+                                    } else {
+                                        patch
+                                    };
+                                    let chars = &mut local["style"]["chars"];
+                                    if let Some(width) = text.style.chars.stroke_width {
+                                        chars["stroke_width"] = json!(width * ratio);
+                                    }
+                                    if let Some(width) = text.style.chars.outer_stroke_width {
+                                        chars["outer_stroke_width"] = json!(width * ratio);
+                                    }
+                                    for span in &mut fitted.content.0 {
+                                        scale_outlines(&mut span.attributes, ratio);
+                                    }
+                                    if let Some(spans) = next_spans.take() {
+                                        *spans = fitted.content.0;
+                                    } else if fitted.content != text.content {
+                                        ops.push(Op::SetRichText {
+                                            layer: layer.clone(),
+                                            spans: fitted.content.0,
+                                        });
+                                    }
                                 }
                             }
                         } else if let Some((text, translation)) = target
@@ -192,12 +241,31 @@ fn base_patch(text: &Text, translation: bool, size: f64, scale: f64, fit: &str) 
     wrapped(patch, translation)
 }
 
+/// Only font-family changes (and the face adjustments the picker sends with them).
+fn family_change(translation: bool, patch: &Value) -> Option<CharStyle> {
+    let local = if translation { &patch["translation"] } else { patch };
+    let chars = &local["style"]["chars"];
+    if *patch != wrapped(json!({"style": {"chars": chars}}), translation)
+        || !chars
+            .as_object()?
+            .keys()
+            .all(|key| matches!(key.as_str(), "family" | "italic" | "weight"))
+        || !chars["family"].is_string()
+    {
+        return None;
+    }
+    serde_json::from_value(chars.clone()).ok()
+}
+
+fn scale_outlines(chars: &mut CharStyle, scale: f64) {
+    chars.stroke_width = chars.stroke_width.map(|width| width * scale);
+    chars.outer_stroke_width = chars.outer_stroke_width.map(|width| width * scale);
+}
+
 fn scale_marks(spans: &mut [Span], scale: f64) {
     for span in spans {
         span.attributes.size = span.attributes.size.map(|size| size * scale);
-        span.attributes.stroke_width = span.attributes.stroke_width.map(|width| width * scale);
-        span.attributes.outer_stroke_width =
-            span.attributes.outer_stroke_width.map(|width| width * scale);
+        scale_outlines(&mut span.attributes, scale);
     }
 }
 

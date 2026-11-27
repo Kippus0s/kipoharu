@@ -498,6 +498,7 @@ impl Typing {
                 let before = self.state();
                 self.content = self.content.marked(0..self.content.text().len(), patch);
                 self.held = held;
+                self.preserve_font_change_outlines(patch)?;
                 self.record(before);
                 return self.relay();
             }
@@ -507,8 +508,41 @@ impl Typing {
         }
         let before = self.state();
         self.content = self.content.marked(range, patch);
+        self.preserve_font_change_outlines(patch)?;
         self.record(before);
         self.relay()
+    }
+
+    /// A face change refits the whole text, including unselected spans. Keep
+    /// their rendered outline widths by compensating for that new scale.
+    fn preserve_font_change_outlines(&mut self, patch: &CharStyle) -> anyhow::Result<()> {
+        if !self.base.is_best_fit()
+            || patch.family.is_none()
+            || patch.size.is_some()
+            || patch.stroke_width.is_some()
+            || patch.outer_stroke_width.is_some()
+        {
+            return Ok(());
+        }
+        let after = self.renderer.lettering(LayerId(Uuid::nil()), &self.shown())?;
+        let ratio = f64::from(self.lettering.scale()) / f64::from(after.scale());
+        if ratio.is_finite() && ratio > 0.0 && ratio != 1.0 {
+            let base = &self.base.style.chars;
+            let preserve = |marks: &mut CharStyle| {
+                marks.stroke_width = marks.stroke_width.or(base.stroke_width).map(|w| w * ratio);
+                marks.outer_stroke_width = marks
+                    .outer_stroke_width
+                    .or(base.outer_stroke_width)
+                    .map(|w| w * ratio);
+            };
+            for span in &mut self.content.0 {
+                preserve(&mut span.attributes);
+            }
+            if let Some(held) = &mut self.held {
+                preserve(held);
+            }
+        }
+        Ok(())
     }
 
     /// The input method's text as it composes, empty when it stops; it
