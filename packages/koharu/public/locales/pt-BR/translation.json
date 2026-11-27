@@ -71,6 +71,7 @@
     "close": "Fechar histórico",
     "opened": "Ao abrir",
     "steps": {
+      "select_layers": "Selecionar camadas",
       "add_text": "Adicionar texto",
       "clone_stamp": "Carimbo de clonagem",
       "delete_layers": "Excluir camadas",

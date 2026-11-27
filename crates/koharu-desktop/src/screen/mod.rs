@@ -146,14 +146,19 @@ impl Screen {
 
     /// Like `change`, for a change that answers canvas effects, which `app`
     /// carries out once the window is free again.
-    fn answer(&self, app: Arc<App>, act: impl FnOnce(&mut Main) -> Vec<Effect> + Send + 'static) {
+    fn answer(
+        &self,
+        app: Arc<App>,
+        record_selection: bool,
+        act: impl FnOnce(&mut Main) -> Vec<Effect> + Send + 'static,
+    ) {
         let Some(handle) = self.0.get() else {
             return;
         };
         let run = move || {
             let mut effects = Vec::new();
             change(|main| effects = act(main));
-            input::carry(&app, effects);
+            input::carry(&app, effects, record_selection);
         };
         if let Err(error) = handle.run_on_main_thread(run) {
             tracing::warn!("failed to change the window: {error}");
@@ -162,7 +167,7 @@ impl Screen {
 
     /// The interface's tool; another commits typing.
     pub fn set_tool(&self, app: Arc<App>, tool: Tool) {
-        self.answer(app, move |main| {
+        self.answer(app, true, move |main| {
             main.settings.tool = tool;
             main.canvas
                 .as_mut()
@@ -172,7 +177,7 @@ impl Screen {
 
     /// Commits typing, as leaving its page does.
     pub fn finish_typing(&self, app: Arc<App>) {
-        self.answer(app, |main| {
+        self.answer(app, true, |main| {
             main.canvas
                 .as_mut()
                 .map_or_else(Vec::new, Canvas::finish_typing)
@@ -230,7 +235,7 @@ impl Screen {
     }
 
     pub fn set_show_original(&self, app: Arc<App>, show: bool) {
-        self.answer(app, move |main| {
+        self.answer(app, true, move |main| {
             main.canvas
                 .as_mut()
                 .map_or_else(Vec::new, |canvas| canvas.set_show_original(show))
@@ -257,10 +262,18 @@ impl Screen {
 
     /// The interface's selection; another layer commits typing.
     pub fn select(&self, app: Arc<App>, layers: Vec<LayerId>) {
-        self.answer(app, move |main| {
-            main.canvas
-                .as_mut()
-                .map_or_else(Vec::new, |canvas| canvas.select(layers))
+        self.answer(app, true, move |main| {
+            let Some(canvas) = &mut main.canvas else {
+                return Vec::new();
+            };
+            let before = canvas.selection().to_vec();
+            let mut effects = canvas.select(layers);
+            if before.as_slice() != canvas.selection()
+                || effects.iter().any(|effect| matches!(effect, Effect::Selection(_)))
+            {
+                effects.push(Effect::Selection(canvas.selection().to_vec()));
+            }
+            effects
         });
     }
 
@@ -268,7 +281,7 @@ impl Screen {
     /// Publish it just like a selection made by a canvas gesture, so the
     /// interface and canvas agree before the next stroke or deselection.
     pub fn select_and_notify(&self, app: Arc<App>, layers: Vec<LayerId>) {
-        self.answer(app, move |main| {
+        self.answer(app, false, move |main| {
             let Some(canvas) = &mut main.canvas else {
                 return Vec::new();
             };
@@ -278,9 +291,21 @@ impl Screen {
         });
     }
 
+    /// Updates the canvas and sidebar without recording another history step.
+    pub fn restore_selection(&self, app: Arc<App>, page: PageId, layers: Vec<LayerId>) {
+        self.change(move |main| {
+            if let Some(canvas) = &mut main.canvas
+                && canvas.selection_layout_key().is_some_and(|(shown, _, _)| shown == page)
+            {
+                canvas.restore_selection(layers.clone());
+                app.emit(events::SELECTION, layers);
+            }
+        });
+    }
+
     /// An arrow key's move of the selection.
     pub fn nudge(&self, app: Arc<App>, by: Vec2) {
-        self.answer(app, move |main| {
+        self.answer(app, true, move |main| {
             main.canvas
                 .as_mut()
                 .map_or_else(Vec::new, |canvas| canvas.nudge(by))

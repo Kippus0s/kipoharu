@@ -45,6 +45,6 @@ Deleting a text block removes its clean-up too, so the original lettering shows 
 
 Use **Edit → Undo** or **Redo**. The shortcuts are `Ctrl+Z` and `Ctrl+Shift+Z` on Windows/Linux, or `Command+Z` and `Command+Shift+Z` on macOS.
 
-Each page-stage result that a run writes is its own undo step, so undoing a project run takes one step per page and stage. History keeps the 20 most recent steps and is cleared when the project closes.
+Each page-stage result that a run writes is its own undo step, so undoing a project run takes one step per page and stage. History keeps up to 1,000 steps within an estimated adaptive budget, with at least 50 recent steps retained when available, and is cleared when the project closes. Layer selection and deselection are also undoable.
 
 **View → History** lists the steps in a small window over the canvas, after the project as it opened. Click a step to go back or forward to it.

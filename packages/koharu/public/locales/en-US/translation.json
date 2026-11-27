@@ -81,6 +81,7 @@
     "close": "Close history",
     "opened": "Opened",
     "steps": {
+      "select_layers": "Select layers",
       "add_text": "Add text",
       "clone_stamp": "Clone Stamp",
       "delete_layers": "Delete layers",

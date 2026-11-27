@@ -347,3 +347,27 @@ fn pixels_read_back_what_write_pixels_wrote() {
         }
     }
 }
+
+#[test]
+fn history_storage_distinguishes_live_retained_and_abandoned_blobs() {
+    let (_dir, mut session, page) = session();
+    let raster = add(&mut session, page, None, json!({"kind": "raster"}));
+    let area = rect(0, 0, 64, 64);
+    paint(&mut session, raster, area, [255, 0, 0, 255].repeat(64 * 64)).unwrap();
+    let red = session.history_storage().unwrap();
+    assert!(red.live_blob_bytes > 0);
+    assert_eq!(red.history_only_blob_bytes, 0);
+    assert_eq!(red.unreferenced_blob_bytes, 0);
+    paint(&mut session, raster, area, [0, 255, 0, 255].repeat(64 * 64)).unwrap();
+    let green = session.history_storage().unwrap();
+    assert_eq!(green.history_only_blob_bytes, red.live_blob_bytes);
+    session.undo().unwrap();
+    let undone = session.history_storage().unwrap();
+    assert_eq!(undone.redo_steps, 1);
+    assert_eq!(undone.history_only_blob_bytes, green.live_blob_bytes);
+    paint(&mut session, raster, area, [0, 0, 255, 255].repeat(64 * 64)).unwrap();
+    let branched = session.history_storage().unwrap();
+    assert_eq!(branched.redo_steps, 0);
+    assert_eq!(branched.history_only_blob_bytes, red.live_blob_bytes);
+    assert_eq!(branched.unreferenced_blob_bytes, green.live_blob_bytes);
+}

@@ -71,6 +71,7 @@
     "close": "關閉步驟記錄",
     "opened": "開啟時",
     "steps": {
+      "select_layers": "選取圖層",
       "add_text": "新增文字",
       "clone_stamp": "仿製印章",
       "delete_layers": "刪除圖層",

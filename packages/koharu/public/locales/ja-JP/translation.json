@@ -71,6 +71,7 @@
     "close": "ヒストリーを閉じる",
     "opened": "開いた状態",
     "steps": {
+      "select_layers": "レイヤーを選択",
       "add_text": "テキストを追加",
       "clone_stamp": "コピースタンプ",
       "delete_layers": "レイヤーを削除",

@@ -71,6 +71,7 @@
     "close": "Fermer l’historique",
     "opened": "À l’ouverture",
     "steps": {
+      "select_layers": "Sélectionner les calques",
       "add_text": "Ajouter du texte",
       "clone_stamp": "Tampon de duplication",
       "delete_layers": "Supprimer des calques",

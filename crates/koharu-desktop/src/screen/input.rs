@@ -472,7 +472,7 @@ pub fn key(app: &Arc<App>, event: &KeyEvent) {
     })
     .flatten();
     match taken {
-        Some(Ok(effects)) => return carry(app, effects),
+        Some(Ok(effects)) => return carry(app, effects, true),
         Some(Err(error)) => {
             tracing::error!("the canvas failed a key: {error:#}");
             return;
@@ -495,8 +495,8 @@ pub fn key(app: &Arc<App>, event: &KeyEvent) {
 
 /// Has the app carry out what the canvas answered, once the window is free
 /// again, and draws again, showing the page as its edits left it.
-pub(super) fn carry(app: &Arc<App>, effects: Vec<Effect>) {
-    let edited = app.handle(effects);
+pub(super) fn carry(app: &Arc<App>, effects: Vec<Effect>, record_selection: bool) {
+    let edited = app.handle(effects, record_selection);
     change(|main| {
         if let (Some(snapshot), Some(canvas)) = (edited, &mut main.canvas) {
             canvas.show(snapshot);
@@ -577,7 +577,7 @@ fn canvas(app: &Arc<App>, window: &dyn Window, event: PointerEvent) {
             if !left {
                 set_cursor(window, cursor);
             }
-            carry(app, effects);
+            carry(app, effects, true);
         }
         Some(Err(error)) => tracing::error!("the canvas failed a pointer event: {error:#}"),
         None => {}

@@ -187,6 +187,7 @@ impl Canvas {
         if other {
             self.clone_source = None;
             self.deselect();
+            self.selection.set(Vec::new());
         }
         self.snapshot = Some(snapshot);
         self.generation += 1;
@@ -270,6 +271,12 @@ impl Canvas {
         };
         self.selection.set(layers);
         effects
+    }
+
+    /// Restores a session history selection without producing another edit.
+    pub fn restore_selection(&mut self, layers: Vec<LayerId>) {
+        self.cancel();
+        self.selection.set(layers);
     }
 
     pub fn selection(&self) -> &[LayerId] {

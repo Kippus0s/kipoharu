@@ -71,6 +71,7 @@
     "close": "Закрыть историю",
     "opened": "При открытии",
     "steps": {
+      "select_layers": "Выбрать слои",
       "add_text": "Добавление текста",
       "clone_stamp": "Штамп",
       "delete_layers": "Удаление слоёв",

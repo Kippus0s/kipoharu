@@ -47,13 +47,22 @@ pub async fn show(app: State<'_, Arc<App>>, page: PageId) -> Result<()> {
     // Typing on the page shown commits before the page changes.
     app.screen.finish_typing(Arc::clone(&app));
     Ok(tokio::task::spawn_blocking(move || -> anyhow::Result<_> {
-        {
+        let moved = {
             let mut project = app.project.lock();
             let project = project.as_mut().context("no project is open")?;
-            project.session.lock().project().page(page)?;
+            let mut session = project.session.lock();
+            session.project().page(page)?;
+            let moved = project.page != Some(page);
+            if moved {
+                session.select_layers(page, Vec::new(), false);
+            }
             project.page = Some(page);
-        }
+            moved
+        };
         app.emit(events::PAGE, Some(page));
+        if moved {
+            app.emit(events::SELECTION, Vec::new());
+        }
         app.refresh()
     })
     .await??)

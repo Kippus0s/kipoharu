@@ -71,6 +71,7 @@
     "close": "Geçmişi kapat",
     "opened": "Açıldığında",
     "steps": {
+      "select_layers": "Katmanları seç",
       "add_text": "Metin ekle",
       "clone_stamp": "Klonlama damgası",
       "delete_layers": "Katmanları sil",

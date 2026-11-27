@@ -213,6 +213,15 @@ impl Store {
         hashes.into_iter().map(|hash| blob(&conn, hash)).collect()
     }
 
+    /// Read only hashes and payload lengths, never the compressed images themselves.
+    pub(crate) fn blob_sizes(&self) -> Result<Vec<(Hash, u64)>> {
+        let conn = self.conn();
+        let mut statement = conn.prepare("SELECT hash, length(bytes) FROM blobs")?;
+        let sizes = from_rows::<(Hash, u64)>(statement.query([])?)
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(sizes)
+    }
+
     pub(crate) fn begin(&mut self) -> Result<Tx<'_>> {
         let conn = self.conn.get_mut().unwrap_or_else(PoisonError::into_inner);
         Ok(Tx(conn.transaction()?))
@@ -221,7 +230,7 @@ impl Store {
 
 /// Every blob the project names: its tiles, its images' files, and its pages'
 /// backgrounds.
-fn named(project: &Project) -> HashSet<Hash> {
+pub(crate) fn named(project: &Project) -> HashSet<Hash> {
     let tiles = project
         .tiles
         .values()

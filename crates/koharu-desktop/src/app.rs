@@ -13,7 +13,7 @@ use futures::StreamExt as _;
 use koharu_canvas::{Canvas, Effect, Snapshot};
 use koharu_pipeline::{Area, Pipeline, PipelineConfig, Request, RunId, Stage, Target};
 use koharu_renderer::Renderer;
-use koharu_scene::{Change, Created, Edit, PageId, Session};
+use koharu_scene::{Change, Created, Edit, LayerId, PageId, Session};
 use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Manager as _};
@@ -182,6 +182,7 @@ impl App {
     /// would otherwise be the one it asks for.
     fn relay(self: &Arc<Self>, mut changes: Receiver<Change>) -> AbortOnDropHandle<()> {
         let app = Arc::clone(self);
+        let diagnostics = std::env::var("KIPOHARU_HISTORY_DIAGNOSTICS").as_deref() == Ok("1");
         AbortOnDropHandle::new(tokio::spawn(async move {
             loop {
                 let mut told = Vec::new();
@@ -198,6 +199,12 @@ impl App {
                 }
                 let showing = Arc::clone(&app);
                 let shown = tokio::task::spawn_blocking(move || {
+                    let (restored, changed_page) = showing.history_selection();
+                    let redraw = lagged
+                        || changed_page
+                        || told.iter().any(|change| {
+                            change.pages != Default::default() || !change.layers.is_empty()
+                        });
                     let shown = showing.settle();
                     // The interface missed changes: it reads the project again.
                     if lagged {
@@ -224,8 +231,20 @@ impl App {
                     for change in told {
                         showing.emit(events::CHANGE, change);
                     }
-                    let result = shown.map_or(Ok(()), |shown| showing.show(shown));
-                    if let Some(layer) = created.filter(|_| result.is_ok()) {
+                    if diagnostics && let Some((session, _)) = &shown {
+                        match session.lock().history_storage() {
+                            Ok(stats) => tracing::info!(?stats, "history storage"),
+                            Err(error) => tracing::warn!(%error, "history storage diagnostic failed"),
+                        }
+                    }
+                    let result = if redraw {
+                        shown.map_or(Ok(()), |shown| showing.show(shown))
+                    } else {
+                        Ok(())
+                    };
+                    if let Some((page, layers)) = restored.filter(|_| result.is_ok()) {
+                        showing.screen.restore_selection(Arc::clone(&showing), page, layers);
+                    } else if let Some(layer) = created.filter(|_| result.is_ok()) {
                         let on_page = showing.project.lock().as_ref().is_some_and(|project| {
                             project.page.is_some_and(|page| {
                                 project
@@ -250,6 +269,29 @@ impl App {
                 }
             }
         }))
+    }
+
+    /// A history jump can restore a layer selection on another page. It is
+    /// transient and must not create a new selection step.
+    fn history_selection(&self) -> (Option<(PageId, Vec<LayerId>)>, bool) {
+        let (restored, moved) = {
+            let mut open = self.project.lock();
+            let Some(open) = open.as_mut() else {
+                return (None, false);
+            };
+            let mut session = open.session.lock();
+            let restored = session.take_restored_selection()
+                .filter(|(page, _)| session.project().page(*page).is_ok());
+            let moved = restored.as_ref().is_some_and(|(page, _)| open.page != Some(*page));
+            if let Some((page, _)) = &restored {
+                open.page = Some(*page);
+            }
+            (restored, moved)
+        };
+        if moved {
+            self.emit(events::PAGE, restored.as_ref().map(|(page, _)| *page));
+        }
+        (restored, moved)
     }
 
     /// Shows the open project's page as it is now. A page that went away
@@ -301,13 +343,30 @@ impl App {
     /// edits left it, so the redraw that ends the gesture shows them: the
     /// relay renders a change only later, on another thread, and the canvas
     /// would meanwhile draw the page from before the edit.
-    pub fn handle(self: &Arc<Self>, effects: Vec<Effect>) -> Option<Snapshot> {
+    pub fn handle(self: &Arc<Self>, effects: Vec<Effect>, record_selection: bool) -> Option<Snapshot> {
         let mut edited = false;
+        let mut created_layers = Vec::new();
         for effect in effects {
             let result = match effect {
-                Effect::Edit(edit) => self.edit(edit).map(|_| edited = true),
+                Effect::Edit(edit) => self.edit(edit).map(|change| {
+                    edited = true;
+                    created_layers.extend(change.created.into_iter().filter_map(|created| match created {
+                        Created::Layer { id, .. } => Some(id),
+                        _ => None,
+                    }));
+                }),
                 Effect::Selection(layers) => {
                     tracing::info!(layers = layers.len(), "selection");
+                    if let Some(open) = self.project.lock().as_ref()
+                        && let Some(page) = open.page
+                    {
+                        let automatic = layers.iter().any(|id| created_layers.contains(id));
+                        open.session.lock().select_layers(
+                            page,
+                            layers.clone(),
+                            record_selection && !automatic,
+                        );
+                    }
                     self.emit(events::SELECTION, layers);
                     Ok(())
                 }

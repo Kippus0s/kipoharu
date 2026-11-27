@@ -71,6 +71,7 @@
     "close": "Cerrar historia",
     "opened": "Al abrir",
     "steps": {
+      "select_layers": "Seleccionar capas",
       "add_text": "Añadir texto",
       "clone_stamp": "Tampón de clonar",
       "delete_layers": "Eliminar capas",

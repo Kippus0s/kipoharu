@@ -358,20 +358,62 @@ fn going_to_a_step_moves_through_every_step_between() {
 }
 
 #[test]
-fn history_keeps_the_most_recent_steps() {
+fn history_keeps_many_inexpensive_edits() {
     let (_dir, mut session, page) = session();
-    let group = add(&mut session, page, None, json!({"kind": "group"}));
-    for index in 0..30 {
+    let group = add(&mut session, page, None, json!({"kind": "group", "name": "original"}));
+    let start = session.history().current;
+    for index in 0..100 {
         update(&mut session, group, json!({"name": index.to_string()})).expect("a rename");
     }
-    let history = session.history();
-    assert_eq!((history.steps.len(), history.current), (20, 20));
-    session.go_to(0).expect("a jump");
-    assert_eq!(
-        layer(&session, group).name,
-        "9",
-        "the oldest kept step renamed it to 10"
-    );
+    assert_eq!(session.history().current, start + 100);
+    session.go_to(start).expect("a jump");
+    assert_eq!(layer(&session, group).name, "original");
+}
+
+#[test]
+fn layer_selection_is_undoable_without_a_document_change() {
+    let (_dir, mut session, page) = session();
+    let a = add(&mut session, page, None, json!({"kind": "group"}));
+    let b = add(&mut session, page, None, json!({"kind": "group"}));
+    let revision = session.revision();
+    let project = session.project();
+    let start = session.history().current;
+    let disk = session.history_storage().unwrap();
+    session.select_layers(page, vec![a], true);
+    session.select_layers(page, vec![a, b], true);
+    session.select_layers(page, vec![a, b], true); // No duplicate step.
+    session.select_layers(page, vec![], true);
+    assert_eq!(session.history().current, start + 3);
+    let change = session.undo().unwrap().unwrap();
+    assert!(change.layers.is_empty());
+    assert!(change.pages.changed.is_empty());
+    assert_eq!(session.take_restored_selection(), Some((page, vec![a, b])));
+    session.undo().unwrap();
+    assert_eq!(session.take_restored_selection(), Some((page, vec![a])));
+    session.redo().unwrap();
+    assert_eq!(session.take_restored_selection(), Some((page, vec![a, b])));
+    session.select_layers(page, vec![b], true);
+    assert!(session.redo().unwrap().is_none());
+    assert_eq!(session.project(), project);
+    assert_eq!(session.revision(), revision);
+    let after = session.history_storage().unwrap();
+    assert_eq!(after.project_file_bytes, disk.project_file_bytes);
+    assert_eq!(after.journal_file_bytes, disk.journal_file_bytes);
+}
+
+#[test]
+fn inexpensive_history_is_bounded_by_the_step_ceiling() {
+    let (_dir, mut session, page) = session();
+    let a = add(&mut session, page, None, json!({"kind": "group"}));
+    for i in 0..1100 {
+        session.select_layers(page, if i % 2 == 0 { vec![a] } else { vec![] }, true);
+    }
+    assert_eq!(session.history().current, 1000);
+    session.go_to(0).unwrap();
+    assert_eq!(session.take_restored_selection(), Some((page, vec![])));
+    assert_eq!(session.history().steps.len(), 1000);
+    session.go_to(1000).unwrap();
+    assert_eq!(session.take_restored_selection(), Some((page, vec![])));
 }
 
 #[test]

@@ -455,9 +455,22 @@ agent.
   from a patch, as OCR writes it.
 - **History** lists every step's label, oldest first, and goes back or forward
   to any of them in one step, as selecting a state in Photoshop's History
-  panel does. It keeps the 20 most recent steps, Photoshop's default, and lasts
-  as long as the project is open, as closing a Photoshop document clears its
-  states [Photoshop History panel].
+  panel does. Layer selection and deselection are steps too, but do not write
+  the project file. History reserves queue capacity for 1,000 steps, keeps at
+  least 50 recent steps when available, and grows its estimated history budget
+  from 100 MiB towards 512 MiB in 100 MiB increments at 80% occupancy.
+  Beyond that budget or 1,000 steps, the oldest entries are discarded (the
+  50-step minimum can exceed the budget). Undo and redo share that budget.
+  The estimate charges changed page metadata and tile references; it is not a
+  reserved RAM pool or a hard process memory limit. Artwork still saves to
+  SQLite immediately, and history is cleared when the project closes.
+  For storage diagnostics, start the desktop app with
+  `KIPOHARU_HISTORY_DIAGNOSTICS=1`. Its existing log records undo and redo
+  counts, the estimated history cost and current budget, compressed bytes
+  used by the current project, additional bytes
+  retained solely for history, unreferenced blob bytes, and project and journal
+  file sizes. Neither the estimate nor the disk measurements report actual RAM; scanning
+  the history and blob table is opt-in and may slow large projects.
 - **No save.** Every edit is kept as it applies, so a project never has unsaved
   changes.
 - **Changes.** Each edit, undo, and redo names the pages and layers it touched

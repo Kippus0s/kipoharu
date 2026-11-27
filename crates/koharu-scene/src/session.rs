@@ -1,24 +1,49 @@
 //! The session: the open project, its file, and its undo history. Every
 //! committed edit is durable, so there's no save.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::VecDeque,
+    io::{self, Write},
+    path::{Path, PathBuf},
+};
 
+use imbl::ordmap::DiffItem;
 use tokio::sync::broadcast;
 
 use crate::{
-    Change, Edit, Error, Hash, History, LayerId, Project, ProjectId, Rect, Result, Revision, Tiles,
-    change, edit, project::Picture, store::Store, tiles,
+    Change, Edit, Error, Hash, History, LayerId, PageId, Project, ProjectId, Rect, Result,
+    Revision, Tiles, change, edit,
+    project::Picture,
+    store::{Store, named},
+    tiles,
 };
 
 /// A project file's extension, without the dot.
 pub const EXTENSION: &str = "khr";
 
-/// How many steps history keeps before it drops the oldest, Photoshop's
-/// History panel default.
-const STEPS: usize = 20;
+const MIN_STEPS: usize = 50;
+const MAX_STEPS: usize = 1000;
+const MIB: usize = 1024 * 1024;
+const INITIAL_BUDGET: usize = 100 * MIB;
+const MAX_BUDGET: usize = 512 * MIB;
 
 /// How many changes a slow listener can fall behind by.
 const CHANGES: usize = 256;
+
+/// Storage diagnostics, not a measurement of process memory. Estimated history
+/// bytes are policy charges; blob sizes are actual compressed payload bytes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HistoryStorage {
+    pub undo_steps: usize,
+    pub redo_steps: usize,
+    pub estimated_history_bytes: usize,
+    pub history_budget_bytes: usize,
+    pub live_blob_bytes: u64,
+    pub history_only_blob_bytes: u64,
+    pub unreferenced_blob_bytes: u64,
+    pub project_file_bytes: u64,
+    pub journal_file_bytes: u64,
+}
 
 /// One open project, holding the file's lock until it's dropped.
 pub struct Session {
@@ -26,8 +51,12 @@ pub struct Session {
     path: PathBuf,
     project: Project,
     revision: Revision,
-    undo: Vec<Step>,
-    redo: Vec<Step>,
+    undo: VecDeque<Step>,
+    redo: VecDeque<Step>,
+    history_bytes: usize,
+    history_budget: usize,
+    selection: Option<SelectionState>,
+    restored_selection: Option<SelectionState>,
     changes: broadcast::Sender<Change>,
 }
 
@@ -37,6 +66,58 @@ struct Step {
     label: String,
     project: Project,
     revision: Revision,
+    bytes: usize,
+    selection: Option<(SelectionState, SelectionState)>,
+}
+
+type SelectionState = (PageId, Vec<LayerId>);
+
+/// A conservative charge for changed data, not an allocator measurement.
+/// Shared snapshots keep untouched pages and map nodes alive without copying
+/// them. Charge both versions of changed pages, plus uncompressed tile sizes
+/// for changed tile references, even though their payloads actually live on disk.
+fn history_cost(before: &Project, after: &Project) -> usize {
+    // Count serialized bytes without allocating another page-sized buffer.
+    #[derive(Default)]
+    struct Counter(usize);
+    impl Write for Counter {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0 = self.0.saturating_add(bytes.len());
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    fn page_cost(page: &crate::Page) -> usize {
+        let mut count = Counter::default();
+        // Project pages already passed serialization when written to SQLite.
+        let _ = serde_json::to_writer(&mut count, page);
+        count.0.saturating_mul(4).saturating_add(
+            crate::project::depth_first(&page.layers)
+                .len()
+                .saturating_mul(std::mem::size_of::<crate::Layer>() + 128),
+        )
+    }
+    let mut bytes = std::mem::size_of::<Step>() + 4096;
+    for item in before.pages.diff(&after.pages) {
+        let cost = match item {
+            DiffItem::Add(_, page) | DiffItem::Remove(_, page) => page_cost(page),
+            DiffItem::Update { old, new } => page_cost(old.1).saturating_add(page_cost(new.1)),
+        };
+        bytes = bytes.saturating_add(cost);
+    }
+    for item in before.tiles.diff(&after.tiles) {
+        let count = match item {
+            DiffItem::Add(_, tiles) | DiffItem::Remove(_, tiles) => tiles.len(),
+            DiffItem::Update { old, new } => old.1.diff(new.1).count(),
+        };
+        bytes = bytes.saturating_add(count.saturating_mul(2 * 64 * 64 * 4 + 512));
+    }
+    if before.order != after.order {
+        bytes = bytes.saturating_add((before.order.len() + after.order.len()).saturating_mul(64));
+    }
+    bytes
 }
 
 impl Session {
@@ -64,8 +145,12 @@ impl Session {
             path: path.to_owned(),
             project,
             revision: Revision::new(),
-            undo: Vec::new(),
-            redo: Vec::new(),
+            undo: VecDeque::with_capacity(MAX_STEPS + 1),
+            redo: VecDeque::with_capacity(MAX_STEPS + 1),
+            history_bytes: 0,
+            history_budget: INITIAL_BUDGET,
+            selection: None,
+            restored_selection: None,
             changes: broadcast::channel(CHANGES).0,
         }
     }
@@ -119,6 +204,104 @@ impl Session {
         }
     }
 
+    /// Read-only diagnostics for undo/redo history. Only run when requested:
+    /// visiting every retained snapshot and blob can be expensive on large projects.
+    pub fn history_storage(&self) -> Result<HistoryStorage> {
+        let live = named(&self.project);
+        let mut retained = std::collections::HashSet::new();
+        for step in self.undo.iter().chain(&self.redo) {
+            retained.extend(named(&step.project));
+        }
+        let mut stats = HistoryStorage {
+            undo_steps: self.undo.len(),
+            redo_steps: self.redo.len(),
+            estimated_history_bytes: self.history_bytes,
+            history_budget_bytes: self.history_budget,
+            project_file_bytes: std::fs::metadata(&self.path)?.len(),
+            ..HistoryStorage::default()
+        };
+        for suffix in ["-wal", "-journal"] {
+            let mut path = self.path.as_os_str().to_owned();
+            path.push(suffix);
+            match std::fs::metadata(path) {
+                Ok(metadata) => stats.journal_file_bytes += metadata.len(),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(error) => return Err(error.into()),
+            }
+        }
+        for (hash, bytes) in self.store.blob_sizes()? {
+            if live.contains(&hash) {
+                stats.live_blob_bytes += bytes;
+            } else if retained.contains(&hash) {
+                stats.history_only_blob_bytes += bytes;
+            } else {
+                stats.unreferenced_blob_bytes += bytes;
+            }
+        }
+        Ok(stats)
+    }
+
+    fn push_step(&mut self, step: Step) {
+        for redo in self.redo.drain(..) {
+            self.history_bytes = self.history_bytes.saturating_sub(redo.bytes);
+        }
+        self.history_bytes = self.history_bytes.saturating_add(step.bytes);
+        self.undo.push_back(step);
+        // Increase the accounting budget before the next edit reaches it.
+        while self.history_budget < MAX_BUDGET
+            && self.history_bytes >= self.history_budget * 4 / 5
+        {
+            self.history_budget = (self.history_budget + INITIAL_BUDGET).min(MAX_BUDGET);
+        }
+        while self.undo.len() > MAX_STEPS
+            || (self.undo.len() > MIN_STEPS && self.history_bytes > self.history_budget)
+        {
+            let removed = self.undo.pop_front().expect("a step to discard");
+            self.history_bytes = self.history_bytes.saturating_sub(removed.bytes);
+        }
+    }
+
+    /// Layer selections are transient session state, not saved project data.
+    /// Page changes and automatic selections establish a baseline without a step.
+    pub fn select_layers(&mut self, page: PageId, mut layers: Vec<LayerId>, record: bool) {
+        layers.retain(|id| self.project.index.get(id) == Some(&page));
+        let before = self
+            .selection
+            .take()
+            .filter(|state| state.0 == page)
+            .unwrap_or_else(|| (page, Vec::new()));
+        let after = (page, layers);
+        self.selection = Some(after.clone());
+        if before == after {
+            return;
+        }
+        self.restored_selection = None;
+        if !record {
+            return;
+        }
+        self.push_step(Step {
+            label: "select_layers".to_owned(),
+            project: self.project.clone(),
+            revision: self.revision(),
+            bytes: std::mem::size_of::<Step>() + 128
+                + (before.1.len() + after.1.len()) * std::mem::size_of::<LayerId>(),
+            selection: Some((before, after)),
+        });
+        let _ = self.changes.send(Change {
+            revision: self.revision(),
+            created: Vec::new(),
+            pages: Default::default(),
+            layers: Default::default(),
+            history: self.history(),
+        });
+    }
+
+    /// The most recent selection restored by a history jump. The desktop
+    /// consumes it together with the corresponding change notification.
+    pub fn take_restored_selection(&mut self) -> Option<(PageId, Vec<LayerId>)> {
+        self.restored_selection.take()
+    }
+
     /// Runs `edit` as one undo step. If it fails, nothing changes.
     pub fn apply(&mut self, edit: Edit) -> Result<Change> {
         let tx = self.store.begin()?;
@@ -130,16 +313,19 @@ impl Session {
         let (pages, layers) = change::changed(&self.project, &next);
         let changed = next != self.project;
         if changed {
+            let bytes = history_cost(&self.project, &next);
             let before = std::mem::replace(&mut self.project, next);
-            self.undo.push(Step {
+            let revision = std::mem::replace(&mut self.revision, Revision::new());
+            self.push_step(Step {
                 label: edit.label,
                 project: before,
-                revision: std::mem::replace(&mut self.revision, Revision::new()),
+                revision,
+                bytes,
+                selection: None,
             });
-            if self.undo.len() > STEPS {
-                self.undo.remove(0);
+            if let Some((page, layers)) = &mut self.selection {
+                layers.retain(|id| self.project.index.get(id) == Some(&*page));
             }
-            self.redo.clear();
         }
         let change = Change {
             revision: self.revision(),
@@ -271,7 +457,7 @@ impl Session {
     }
 
     /// Goes to the project as it was after `step` of the history's steps, 0
-    /// being as it opened, as selecting a state in Photoshop's History panel
+    /// being the oldest retained state, as selecting a state in Photoshop's History panel
     /// does. Every step between is undone or redone in one write, which can't
     /// conflict: the file holds the current project, whatever it was.
     pub fn go_to(&mut self, step: usize) -> Result<Option<Change>> {
@@ -289,25 +475,37 @@ impl Session {
             true => &self.undo[step].project,
             false => &self.redo[total - step].project,
         };
-        let tx = self.store.begin()?;
-        tx.write_diff(&self.project, target)?;
-        tx.commit()?;
+        if target != &self.project {
+            let tx = self.store.begin()?;
+            tx.write_diff(&self.project, target)?;
+            tx.commit()?;
+        }
         let before = self.project.clone();
         while self.undo.len() > step {
-            shift(
+            if let Some(selection) = shift(
                 &mut self.project,
                 &mut self.revision,
                 &mut self.undo,
                 &mut self.redo,
-            );
+            ) {
+                self.restored_selection = Some(selection);
+            }
         }
         while self.undo.len() < step {
-            shift(
+            if let Some(selection) = shift(
                 &mut self.project,
                 &mut self.revision,
                 &mut self.redo,
                 &mut self.undo,
-            );
+            ) {
+                self.restored_selection = Some(selection);
+            }
+        }
+        if let Some((page, layers)) = &mut self.restored_selection {
+            layers.retain(|id| self.project.index.get(id) == Some(&*page));
+            self.selection = Some((*page, layers.clone()));
+        } else if let Some((page, layers)) = &mut self.selection {
+            layers.retain(|id| self.project.index.get(id) == Some(&*page));
         }
         let (pages, layers) = change::changed(&before, &self.project);
         let change = Change {
@@ -324,13 +522,21 @@ impl Session {
 
 /// Moves the top step of `from` to `to`, making its project current and
 /// keeping the one it replaces in its place.
-fn shift(project: &mut Project, revision: &mut Revision, from: &mut Vec<Step>, to: &mut Vec<Step>) {
-    let step = from.pop().expect("a step to move");
-    to.push(Step {
-        label: step.label,
-        project: std::mem::replace(project, step.project),
-        revision: std::mem::replace(revision, step.revision),
+fn shift(
+    project: &mut Project,
+    revision: &mut Revision,
+    from: &mut VecDeque<Step>,
+    to: &mut VecDeque<Step>,
+) -> Option<SelectionState> {
+    let mut step = from.pop_back().expect("a step to move");
+    std::mem::swap(project, &mut step.project);
+    std::mem::swap(revision, &mut step.revision);
+    let selected = step.selection.as_mut().map(|(target, other)| {
+        std::mem::swap(target, other);
+        other.clone()
     });
+    to.push_back(step);
+    selected
 }
 
 // This limits the file behind the session, which only the crate can do.
@@ -340,6 +546,38 @@ mod tests {
 
     use super::*;
     use crate::{Created, Op};
+
+    #[test]
+    fn history_budget_grows_and_keeps_a_minimum_under_pressure() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let mut session = Session::create(dir.path().join("test.khr")).expect("a project");
+        let push = |session: &mut Session, bytes| {
+            session.push_step(Step {
+                label: "test".to_owned(),
+                project: session.project(),
+                revision: session.revision(),
+                bytes,
+                selection: None,
+            });
+        };
+        assert_eq!(session.history_budget, INITIAL_BUDGET);
+        assert!(session.undo.capacity() >= MAX_STEPS);
+        assert!(session.redo.capacity() >= MAX_STEPS);
+        push(&mut session, 80 * MIB);
+        assert_eq!(session.history_budget, 200 * MIB);
+        for _ in 0..100 {
+            push(&mut session, 16 * MIB);
+        }
+        assert_eq!(session.history_budget, MAX_BUDGET);
+        assert_eq!(session.undo.len(), MIN_STEPS);
+        assert_eq!(session.history_bytes, MIN_STEPS * 16 * MIB);
+        session.undo().unwrap();
+        assert_eq!(session.history_bytes, MIN_STEPS * 16 * MIB);
+        push(&mut session, MIB);
+        assert!(session.redo.is_empty());
+        assert_eq!(session.undo.len(), MIN_STEPS);
+        assert_eq!(session.history_bytes, (MIN_STEPS - 1) * 16 * MIB + MIB);
+    }
 
     #[test]
     fn an_edit_that_runs_out_of_space_changes_nothing() {

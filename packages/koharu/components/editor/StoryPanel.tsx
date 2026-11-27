@@ -139,9 +139,8 @@ export function StoryPanel() {
 function useShowPage() {
   return useMutation({
     mutationFn: (page: PageId) => {
-      const { selectPages, selectLayers } = useKoharuStore.getState()
+      const { selectPages } = useKoharuStore.getState()
       selectPages([page])
-      selectLayers([])
       return commands.show(page)
     },
   })

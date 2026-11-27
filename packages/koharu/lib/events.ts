@@ -99,5 +99,14 @@ function receiveChange(change: Change): void {
         }
       : project,
   )
-  void refresh(projectKey, pageKey, pagesKey).catch(() => undefined)
+  // A layer-selection history step only updates the history list.
+  if (
+    change.layers.length ||
+    change.pages.added.length ||
+    change.pages.removed.length ||
+    change.pages.changed.length ||
+    change.pages.reordered
+  ) {
+    void refresh(projectKey, pageKey, pagesKey).catch(() => undefined)
+  }
 }

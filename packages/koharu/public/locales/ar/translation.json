@@ -71,6 +71,7 @@
     "close": "إغلاق السجل",
     "opened": "عند الفتح",
     "steps": {
+      "select_layers": "تحديد الطبقات",
       "add_text": "إضافة نص",
       "clone_stamp": "ختم الاستنساخ",
       "delete_layers": "حذف الطبقات",
