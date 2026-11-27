@@ -39,7 +39,7 @@ pub(crate) struct GlyphRun {
     pub font: Font,
     pub glyphs: Vec<glifo::Glyph>,
     /// Its glyphs are turned a quarter clockwise around their origins, as
-    /// vertical text sets Latin.
+    /// mixed vertical text sets Latin.
     pub sideways: bool,
 }
 
@@ -257,7 +257,10 @@ fn position(
         let (ascent, descent) = shaped.font(run).extent(size);
         let baseline = line.top + (line.pitch - (ascent + descent)) * 0.5 + ascent;
         first.get_or_insert(if vertical { -block_center } else { baseline });
-        let sideways = run.orientation == Orientation::Sideways;
+        let sideways = matches!(
+            run.orientation,
+            Orientation::Sideways | Orientation::VerticalDots
+        );
         let mut push = |x: f32, y: f32, glyph: &Glyph| {
             let id = glyph.id;
             let drawn = glifo::Glyph { id, x, y };
@@ -291,7 +294,9 @@ fn position(
             // ink, whichever way it stands, as JLREQ centres `！`, `？`, `…`,
             // and dashes; its font centres its em box, which a Western `…`
             // or a Chinese `！` inks off the middle of.
-            let ink = (vertical && centred(&styled.text, glyph.cluster, styled.chinese))
+            let ink = (vertical
+                && (run.orientation == Orientation::VerticalDots
+                    || centred(&styled.text, glyph.cluster, styled.chinese)))
                 .then(|| shaped.font(run).ink(glyph.id, size))
                 .flatten();
             // Chinese centres a stop along its cell too, which its font's
@@ -738,10 +743,79 @@ mod tests {
     }
 
     #[test]
-    fn sideways_latin_runs_down_its_column_centred_across_it() -> Result<()> {
+    fn western_vertical_text_draws_each_letter_upright_in_its_own_cell() -> Result<()> {
         let font = styled("").spans[0].fonts[0].clone();
         let text = koharu_scene::Text {
-            content: "AV".into(),
+            content: "office!".into(),
+            direction: koharu_scene::Direction::Vertical,
+            ..koharu_scene::Text::default()
+        };
+        let layout = crate::text::layout(&text, |_, _| Ok(vec![font.clone()]))?.expect("a layout");
+        assert!(layout.runs.iter().all(|run| !run.sideways));
+        let glyphs: Vec<_> = layout.runs.iter().flat_map(|run| &run.glyphs).collect();
+        assert_eq!(glyphs.len(), 7);
+        assert_eq!(layout.lines.len(), 1);
+        assert_eq!(layout.lines[0].clusters.len(), 7);
+        assert!(glyphs.windows(2).all(|pair| pair[0].y < pair[1].y));
+        assert!(layout.bounds.height() > layout.bounds.width() * 3.0);
+        Ok(())
+    }
+
+    #[test]
+    fn western_numbers_share_a_horizontal_cell() -> Result<()> {
+        let font = styled("").spans[0].fonts[0].clone();
+        let text = koharu_scene::Text {
+            content: "A12345B".into(),
+            direction: koharu_scene::Direction::Vertical,
+            ..koharu_scene::Text::default()
+        };
+        let layout = crate::text::layout(&text, |_, _| Ok(vec![font.clone()]))?.expect("a layout");
+        assert!(layout.runs.iter().all(|run| !run.sideways));
+        let glyphs: Vec<_> = layout.runs.iter().flat_map(|run| &run.glyphs).collect();
+        assert_eq!(glyphs.len(), 7);
+        let digits = &glyphs[1..6];
+        assert!(digits.windows(2).all(|pair| {
+            pair[0].x < pair[1].x && (pair[0].y - pair[1].y).abs() < 0.01
+        }));
+        assert!(glyphs[0].y < digits[0].y && digits[0].y < glyphs[6].y);
+        Ok(())
+    }
+
+    #[test]
+    fn western_ellipsis_runs_compactly_down_the_column() -> Result<()> {
+        let font = styled("").spans[0].fonts[0].clone();
+        let text = koharu_scene::Text {
+            content: "...!?".into(),
+            direction: koharu_scene::Direction::Vertical,
+            ..koharu_scene::Text::default()
+        };
+        let layout = crate::text::layout(&text, |_, _| Ok(vec![font.clone()]))?.expect("a layout");
+        let dots = &layout.runs[0];
+        assert!(dots.sideways);
+        assert_eq!(dots.glyphs.len(), 3);
+        let size = layout.resolved.runs[0].size;
+        for pair in dots.glyphs.windows(2) {
+            let gap = pair[1].y - pair[0].y;
+            assert!(gap > 0.0 && gap < size, "{gap}");
+        }
+        for glyph in &dots.glyphs {
+            let ink = dots.font.ink(glyph.id, size).expect("a dot has ink");
+            let centre = glyph.x + (ink.y0 + ink.y1) as f32 * 0.5;
+            assert!((centre - layout.resolved.baseline).abs() < 0.01);
+        }
+        let marks = &layout.runs[1];
+        assert!(!marks.sideways);
+        assert_eq!(marks.glyphs.len(), 2);
+        assert!(marks.glyphs[0].x < marks.glyphs[1].x);
+        assert!((marks.glyphs[0].y - marks.glyphs[1].y).abs() < 0.01);
+        Ok(())
+    }
+
+    #[test]
+    fn mixed_sideways_latin_runs_down_its_column_centred_across_it() -> Result<()> {
+        let font = styled("").spans[0].fonts[0].clone();
+        let text = koharu_scene::Text {
+            content: "AV東".into(),
             direction: koharu_scene::Direction::Vertical,
             ..koharu_scene::Text::default()
         };

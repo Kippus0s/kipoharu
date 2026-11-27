@@ -35,9 +35,10 @@ pub(super) enum Orientation {
     Upright,
     /// Turned a quarter clockwise, set as a horizontal line down the column.
     Sideways,
-    /// Two or three `!` and `?` side by side in one upright cell, as
-    /// Photoshop's tate-chu-yoko sets them.
+    /// A group side by side in one upright cell.
     TateChuYoko,
+    /// Compact ellipsis dots turned down the column and centred by their ink.
+    VerticalDots,
 }
 
 /// The runs of `styled`, whose bytes have bidi `levels`, in logical order
@@ -50,28 +51,47 @@ pub(super) enum Orientation {
 pub(super) fn itemize(styled: &Styled, levels: &[Level]) -> (Vec<Run>, Vec<char>) {
     let mut runs = Vec::new();
     let mut uncovered = Vec::new();
+    // Western lettering in a narrow column stacks its characters instead
+    // of turning the whole word. Mixed CJK text keeps Unicode's mixed
+    // orientation and tate-chu-yoko rules, regardless of language metadata.
+    let western = styled.vertical && {
+        let scripts = CodePointMapData::<IcuScript>::new();
+        styled.text.chars().try_fold(false, |western, ch| {
+            match scripts.get(ch) {
+                IcuScript::Latin => Some(true),
+                IcuScript::Common | IcuScript::Inherited => Some(
+                    western || ch.is_ascii_digit() || ch.is_ascii_punctuation()
+                        || matches!(ch, '０'..='９' | '！' | '？' | '…' | '‥'),
+                ),
+                _ => None,
+            }
+        }) == Some(true)
+    };
     for (piece, span) in pieces(styled, levels) {
         let fonts = fall_back(styled, piece.clone(), span, &mut uncovered);
         let font_at = |at: usize| {
             let (_, font) = fonts.iter().find(|(cut, _)| cut.contains(&at))?;
             styled.spans[span].fonts.get(*font)
         };
-        let parts = match styled.vertical {
-            true => upright_groups(&styled.text, piece)
+        let parts = match (styled.vertical, western) {
+            (true, true) => western_cells(&styled.text, piece),
+            (true, false) => upright_groups(&styled.text, piece)
                 .into_iter()
                 .flat_map(|(part, group)| match group {
                     true => vec![(part, Orientation::TateChuYoko)],
                     false => orientations(&styled.text, part, font_at),
                 })
                 .collect(),
-            false => vec![(piece, Orientation::Upright)],
+            (false, _) => vec![(piece, Orientation::Upright)],
         };
         for (part, orientation) in parts {
             // Vertical text stands upright top to bottom whatever its
             // direction; what it turns sideways keeps its own, as a line.
             let level = match (styled.vertical, orientation) {
                 (false, _) | (true, Orientation::Sideways) => levels[part.start],
-                (true, Orientation::Upright | Orientation::TateChuYoko) => Level::ltr(),
+                (true, Orientation::Upright | Orientation::TateChuYoko | Orientation::VerticalDots) => {
+                    Level::ltr()
+                }
             };
             for (range, script) in script_runs(&styled.text, part) {
                 runs.extend(fonts.iter().filter_map(|(cut, font)| {
@@ -260,6 +280,52 @@ fn is_exclamation(ch: char) -> bool {
     matches!(ch, '!' | '?' | '！' | '？')
 }
 
+/// Keep upright graphemes separate so ligatures cannot combine letters in
+/// different cells. Digit and sentence-mark groups share a row; ellipses use the
+/// proportional horizontal dot advances down the column instead.
+fn western_cells(text: &str, range: Range<usize>) -> Vec<(Range<usize>, Orientation)> {
+    let part = &text[range.clone()];
+    let boundaries: Vec<usize> = GraphemeClusterSegmenter::new().segment_str(part).collect();
+    let sentence_mark = |grapheme: &str| {
+        let mut chars = grapheme.chars();
+        chars.next().is_some_and(is_exclamation) && chars.next().is_none()
+    };
+    let digit = |grapheme: &str| {
+        let mut chars = grapheme.chars();
+        chars.next().is_some_and(|ch| ch.is_ascii_digit() || matches!(ch, '０'..='９'))
+            && chars.next().is_none()
+    };
+    let dots = |grapheme: &str| matches!(grapheme, "." | "…" | "‥");
+    let mut cells = Vec::new();
+    let mut graphemes = boundaries.windows(2).peekable();
+    while let Some(pair) = graphemes.next() {
+        let first = &part[pair[0]..pair[1]];
+        let mut end = pair[1];
+        if sentence_mark(first) || digit(first) || dots(first) {
+            while let Some(next) = graphemes.peek() {
+                let next_text = &part[next[0]..next[1]];
+                if !(sentence_mark(first) && sentence_mark(next_text)
+                    || digit(first) && digit(next_text)
+                    || dots(first) && dots(next_text))
+                {
+                    break;
+                }
+                end = next[1];
+                graphemes.next();
+            }
+        }
+        let orientation = if (sentence_mark(first) || digit(first)) && end > pair[1] {
+            Orientation::TateChuYoko
+        } else if dots(first) && (first != "." || end > pair[1]) {
+            Orientation::VerticalDots
+        } else {
+            Orientation::Upright
+        };
+        cells.push((range.start + pair[0]..range.start + end, orientation));
+    }
+    cells
+}
+
 /// `range` cut around what vertical text sets upright side by side in one
 /// cell: two or three `!` and `?`, and a number of one or two digits, as
 /// CSS's `text-combine-upright: digits 2` sets it, unless it's part of a
@@ -388,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn vertical_text_turns_latin_and_digits_sideways() {
+    fn mixed_vertical_text_turns_latin_and_digits_sideways() {
         let text = "東京Tokyo Tower、高さ333!";
         let parts: Vec<(&str, Orientation)> = orientations(text, 0..text.len(), |_| None)
             .into_iter()
@@ -410,6 +476,70 @@ mod tests {
             orientations(keycap, 0..keycap.len(), |_| None),
             [(0..keycap.len(), Orientation::Upright)]
         );
+    }
+
+    #[test]
+    fn western_vertical_text_stacks_graphemes_and_keeps_mixed_cjk_rules() {
+        let western = Styled {
+            vertical: true,
+            ..styled("He\u{301}llo!? 12")
+        };
+        let levels = BidiInfo::new(&western.text, None).levels;
+        let (runs, _) = itemize(&western, &levels);
+        use Orientation::{TateChuYoko, Upright};
+        let cells: Vec<_> = runs
+            .iter()
+            .map(|run| (&western.text[run.range.clone()], run.orientation))
+            .collect();
+        assert_eq!(
+            cells,
+            [
+                ("H", Upright), ("e\u{301}", Upright), ("l", Upright), ("l", Upright),
+                ("o", Upright), ("!?", TateChuYoko), (" ", Upright), ("12", TateChuYoko),
+            ]
+        );
+
+        let mixed = Styled {
+            vertical: true,
+            ..styled("東Hello!?")
+        };
+        let levels = BidiInfo::new(&mixed.text, None).levels;
+        let (runs, _) = itemize(&mixed, &levels);
+        assert!(runs.iter().any(|run| {
+            run.orientation == Orientation::Sideways
+                && &mixed.text[run.range.clone()] == "Hello"
+        }));
+        assert!(runs.iter().any(|run| run.orientation == Orientation::TateChuYoko));
+    }
+
+    #[test]
+    fn western_vertical_numbers_and_punctuation() {
+        use Orientation::{TateChuYoko, Upright, VerticalDots};
+        for (text, expected) in [
+            ("123", vec![("123", TateChuYoko)]),
+            ("12", vec![("12", TateChuYoko)]),
+            ("1234567890", vec![("1234567890", TateChuYoko)]),
+            ("1", vec![("1", Upright)]),
+            ("1\n2", vec![("1", Upright), ("2", Upright)]),
+            ("1 2", vec![("1", Upright), (" ", Upright), ("2", Upright)]),
+            ("!!!!?", vec![("!!!!?", TateChuYoko)]),
+            ("???", vec![("???", TateChuYoko)]),
+            ("...", vec![("...", VerticalDots)]),
+            ("…", vec![("…", VerticalDots)]),
+            ("...?", vec![("...", VerticalDots), ("?", Upright)]),
+            ("A12!!!", vec![("A", Upright), ("12", TateChuYoko), ("!!!", TateChuYoko)]),
+            ("A123B45", vec![("A", Upright), ("123", TateChuYoko), ("B", Upright), ("45", TateChuYoko)]),
+            ("!\n?", vec![("!", Upright), ("?", Upright)]),
+            (".\n.", vec![(".", Upright), (".", Upright)]),
+        ] {
+            let styled = Styled { vertical: true, ..styled(text) };
+            let levels = BidiInfo::new(&styled.text, None).levels;
+            let (runs, _) = itemize(&styled, &levels);
+            let cells: Vec<_> = runs.iter()
+                .map(|run| (&styled.text[run.range.clone()], run.orientation))
+                .collect();
+            assert_eq!(cells, expected, "{text:?}");
+        }
     }
 
     #[test]

@@ -184,7 +184,7 @@ mod tests {
             .find_map(|family| library.family(family).ok())
             .expect("an installed sans-serif");
         let text = Text {
-            content: "L".into(),
+            content: "Γ".into(),
             direction: koharu_scene::Direction::Vertical,
             ..Text::default()
         };
@@ -225,8 +225,8 @@ mod tests {
             inside(top, bottom, margin, size.height),
             "{top}..{bottom} down"
         );
-        // An L turned clockwise is a Γ: its stem runs along the top, which
-        // turned the other way would be a ┘'s foot at the right.
+        // A Greek Γ turns clockwise: its left stem runs along the top,
+        // and its horizontal arm runs down the right.
         let along_top = ink.iter().filter(|at| at.1 <= top + 1).count() as u32;
         assert!(
             along_top * 2 > right - left,
