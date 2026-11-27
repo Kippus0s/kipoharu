@@ -31,7 +31,7 @@ export function handleWorkspaceShortcut(event: KeyboardEvent) {
   if (event.repeat) return
   const active = document.activeElement
   if (layers) {
-    // Blurring a Story field lets CommitTextarea flush its draft before the tab is unmounted.
+    // Blurring a Story field lets CommitTextarea flush its draft before the tab is hidden.
     if (
       active instanceof HTMLElement &&
       active.closest('[data-workspace-sidebar]') &&

@@ -52,12 +52,22 @@ export function RightSidebar() {
             </Tooltip>
           ))}
         </TabsList>
-        <TabsContent value='layers' className='flex min-h-0 flex-col'>
-          <LayersPanel />
-        </TabsContent>
-        <TabsContent value='story' className='flex min-h-0 flex-col'>
-          <StoryPanel />
-        </TabsContent>
+        <div className='grid min-h-0 flex-1 grid-cols-1 grid-rows-1'>
+          <TabsContent value='layers' className='col-start-1 row-start-1 flex min-h-0 flex-col'>
+            <LayersPanel />
+          </TabsContent>
+          {/* Keep Story measured and mounted, without exposing its fields when Layers is shown. */}
+          <TabsContent
+            value='story'
+            keepMounted
+            hidden={false}
+            inert={panel !== 'story'}
+            aria-hidden={panel !== 'story'}
+            className={`col-start-1 row-start-1 flex min-h-0 flex-col${panel === 'story' ? '' : ' invisible'}`}
+          >
+            <StoryPanel />
+          </TabsContent>
+        </div>
       </Tabs>
     </aside>
   )

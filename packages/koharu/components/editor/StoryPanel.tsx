@@ -44,6 +44,7 @@ export function StoryPanel() {
   const project = useProject().data
   const pages = project?.pages ?? []
   const shown = project?.page ?? null
+  const shownIndex = pages.findIndex((page) => page.id === shown)
   const active = useKoharuStore((state) => state.panel === 'story')
   const list = useRef<HTMLDivElement>(null)
   // The page holding the focused field, kept mounted while it scrolls away, so an edit in
@@ -57,20 +58,21 @@ export function StoryPanel() {
     overscan: 2,
     rangeExtractor: (range) => {
       const indexes = defaultRangeExtractor(range)
-      return focused === null || indexes.includes(focused)
-        ? indexes
-        : [...indexes, focused].sort((a, b) => a - b)
+      // Warm the canvas page while Story is hidden, even before its scroll settles.
+      if (!active && shownIndex >= 0 && !indexes.includes(shownIndex)) indexes.push(shownIndex)
+      if (focused !== null && !indexes.includes(focused)) indexes.push(focused)
+      return indexes.sort((a, b) => a - b)
     },
     initialRect: { width: 280, height: 600 },
+    initialOffset: Math.max(0, shownIndex) * 160,
     observeElementRect: (instance, callback) =>
       observeElementRect(instance, (rect) =>
         callback({ width: rect.width || 280, height: rect.height || 600 }),
       ),
   })
 
-  const shownIndex = pages.findIndex((page) => page.id === shown)
   useLayoutEffect(() => {
-    if (!active || shownIndex < 0 || list.current?.contains(document.activeElement)) return
+    if (shownIndex < 0 || (active && list.current?.contains(document.activeElement))) return
     virtualizer.scrollToIndex(shownIndex, { align: 'start' })
   }, [active, shownIndex, virtualizer])
 
@@ -160,7 +162,8 @@ function StoryPage({
   active: boolean
 }) {
   const { t } = useTranslation()
-  const data = usePageStory(page).data
+  // Only the current canvas page needs to stay fresh while the panel is hidden.
+  const data = usePageStory(page, active || shown).data
   const show = useShowPage()
   const section = useRef<HTMLElement>(null)
   // The virtual page's query can finish without a render of StoryPanel. Follow from here,
@@ -205,6 +208,7 @@ function StoryPage({
           key={layer.id}
           page={page}
           shown={shown}
+          active={active}
           number={number}
           layer={layer}
           locked={locked}
@@ -251,6 +255,7 @@ function ReadingNumber({ number, sfx }: { number: number | null; sfx: boolean })
 function StoryText({
   page,
   shown,
+  active,
   number,
   layer,
   locked,
@@ -258,6 +263,7 @@ function StoryText({
   page: PageId
   /** Its page is the one the canvas shows. */
   shown: boolean
+  active: boolean
   number: number | null
   layer: BlockLayer | TextLayer
   locked: boolean
@@ -303,7 +309,8 @@ function StoryText({
       onPointerEnter={() => shown && number !== null && setStoryHover(layer.id)}
       onPointerLeave={() => setStoryHover(null)}
     >
-      <div className='flex flex-col items-center gap-1'>
+      {/* Reset transient popups on a tab switch: their portals live outside the hidden panel. */}
+      <div key={active ? 'active' : 'hidden'} className='flex flex-col items-center gap-1'>
         <ReadingNumber number={number} sfx={isBlockLayer(layer) && layer.role === 'sfx'} />
         {isBlockLayer(layer) && (
           <Tooltip>
