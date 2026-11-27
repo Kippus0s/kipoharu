@@ -5,7 +5,16 @@ import { toast } from '@koharu/ui/components/toast'
 
 import { toHex } from './color'
 import i18n from './i18n'
-import { pageKey, pagesKey, projectKey, queryClient, refresh, type ProjectView } from './queries'
+import {
+  pageDataKey,
+  pageKey,
+  projectKey,
+  queryClient,
+  refresh,
+  storyKey,
+  storyPageKey,
+  type ProjectView,
+} from './queries'
 import {
   receiveCanvasSelection,
   receiveDownload,
@@ -56,8 +65,14 @@ export function hear(active: () => boolean): Promise<void> {
     })
 }
 
-/** Another project opened, or the open one closed: its selection starts empty. A project told
- * again, after changes the interface missed, is read again. */
+/** Cancel even an initial read, whose result might predate the event. */
+function rereadProject(): void {
+  void queryClient.cancelQueries({ queryKey: projectKey, exact: true }, { revert: false })
+  void refresh(projectKey).catch(() => undefined)
+}
+
+/** Another project opened or closed, or a notification was missed. In all cases the
+ * old page data and reading order must not survive a full resynchronisation. */
 function receiveProject(name: string | null): void {
   const previous = queryClient.getQueryData<ProjectView | null>(projectKey)
   if (previous?.name !== name) {
@@ -65,48 +80,62 @@ function receiveProject(name: string | null): void {
     store.selectPages([])
     store.selectLayers([])
   }
+  void queryClient.cancelQueries({ queryKey: projectKey, exact: true }, { revert: false })
+  for (const queryKey of [pageKey, storyKey, ['thumbnail']]) {
+    queryClient.removeQueries({ queryKey })
+  }
   if (name === null) {
     queryClient.setQueryData(projectKey, null)
-    queryClient.setQueryData(pageKey, null)
   } else {
-    void refresh(projectKey, pageKey).catch(() => undefined)
+    // Clear the previous view so the next query reads name, shown page and history again.
+    void queryClient.resetQueries({ queryKey: projectKey, exact: true }).catch(() => undefined)
   }
 }
 
-/** The page the canvas shows. The project is read again too: a read already under way, which a
- * change starts, answers the page shown before, and would land over this one. */
+/** The page event is authoritative; changing page switches the shared page query's key. */
 function receivePage(page: PageId | null): void {
-  queryClient.setQueryData<ProjectView | null>(projectKey, (project) =>
-    project ? { ...project, page } : project,
-  )
+  const project = queryClient.getQueryData<ProjectView | null>(projectKey)
+  if (project) {
+    queryClient.setQueryData<ProjectView>(projectKey, { ...project, page })
+  } else if (page !== null) {
+    rereadProject()
+  }
   if (page !== null && useKoharuStore.getState().selectedPages.length === 0) {
     useKoharuStore.getState().selectPages([page])
   }
-  void refresh(projectKey, pageKey).catch(() => undefined)
 }
 
-/** An edit, undo, or redo, from whichever writer: the project and its shown page are read again,
- * and so are the pages Story lists, which a change to one of their layers doesn't name. */
+/** Edits name the affected pages, even when they aren't shown. History comes with the
+ * event; page and Story data for unaffected pages remain valid. */
 function receiveChange(change: Change): void {
-  queryClient.setQueryData<ProjectView | null>(projectKey, (project) =>
-    project
-      ? {
-          ...project,
-          history: change.history,
-          revisions: project.page
-            ? { ...project.revisions, [project.page]: change.revision }
-            : project.revisions,
-        }
-      : project,
-  )
-  // A layer-selection history step only updates the history list.
-  if (
-    change.layers.length ||
-    change.pages.added.length ||
-    change.pages.removed.length ||
-    change.pages.changed.length ||
-    change.pages.reordered
-  ) {
-    void refresh(projectKey, pageKey, pagesKey).catch(() => undefined)
+  const project = queryClient.getQueryData<ProjectView | null>(projectKey)
+  if (!project) {
+    rereadProject()
+    return
+  }
+  const affected = [...change.pages.added, ...change.pages.changed]
+  const revisions = { ...project.revisions }
+  for (const page of affected) revisions[page] = change.revision
+  for (const page of change.pages.removed) delete revisions[page]
+  queryClient.setQueryData<ProjectView>(projectKey, {
+    ...project,
+    history: change.history,
+    revisions,
+  })
+
+  for (const page of change.pages.removed) {
+    for (const queryKey of [pageDataKey(project.name, page), storyPageKey(project.name, page)]) {
+      queryClient.removeQueries({ queryKey, exact: true })
+    }
+  }
+  for (const page of affected) {
+    for (const queryKey of [pageDataKey(project.name, page), storyPageKey(project.name, page)]) {
+      // Also cancel inactive or first-time reads; their old answers must not repopulate the cache.
+      void queryClient.cancelQueries({ queryKey, exact: true })
+      void queryClient.invalidateQueries({ queryKey, exact: true }).catch(() => undefined)
+    }
+  }
+  if (affected.length || change.pages.removed.length || change.pages.reordered) {
+    void refresh(projectKey).catch(() => undefined)
   }
 }

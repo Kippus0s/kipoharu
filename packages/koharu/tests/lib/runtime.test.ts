@@ -3,9 +3,9 @@ import { createElement, StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Providers from '@/app/providers'
-import { useProject } from '@/lib/queries'
+import { queryClient, usePage, usePageStory, useProject } from '@/lib/queries'
 import { useKoharuStore } from '@/lib/store'
-import { commands, events, type Preferences } from '@koharu/ipc/protocol'
+import { commands, events, type Change, type Preferences } from '@koharu/ipc/protocol'
 
 vi.mock('@tauri-apps/api/core', () => ({
   Channel: class {},
@@ -102,6 +102,78 @@ describe('Tauri runtime', () => {
     expect(useKoharuStore.getState().downloads[7]).toMatchObject({ completed: 25, total: 100 })
     expect(useKoharuStore.getState().camera).toEqual({ zoom: 0.5, x: 12, y: 34 })
     expect(useKoharuStore.getState().selectedLayers).toEqual(['layer'])
+    view.unmount()
+  })
+
+  it('shares page data and refreshes only affected pages, keeping event history and navigation', async () => {
+    desktop(() => 'Book')
+    vi.spyOn(commands, 'getShownPage').mockResolvedValue('a')
+    let width = 100
+    let releaseSummaries: (() => void) | undefined
+    let holdSummaries = false
+    const query = vi.spyOn(commands, 'query').mockImplementation(async (request) => {
+      const size = { width, height: 100 }
+      switch (request.query) {
+        case 'get_project':
+          if (holdSummaries) await new Promise<void>((resolve) => { releaseSummaries = resolve })
+          return { id: 'book', version: '1', pages: ['a', 'b'].map((id) => ({
+            id, size, background: null, texts: 0, translated: 0,
+          })) }
+        case 'get_page':
+          return { id: request.page, size, background: null, layers: [] }
+        case 'get_story':
+          return []
+        default:
+          return { current: 0, steps: [] }
+      }
+    })
+    function Probe() {
+      const project = useProject().data
+      const shown = usePage().data
+      const a = usePageStory('a').data
+      const b = usePageStory('b').data
+      return createElement('span', null, [
+        shown?.id, a?.page.size.width, b?.page.size.width, project?.history.current,
+      ].join(':'))
+    }
+    const view = render(createElement(Providers, null, createElement(Probe)))
+    expect(await screen.findByText('a:100:100:0')).toBeInTheDocument()
+    expect(query.mock.calls.filter(([request]) => request.query === 'get_page')).toHaveLength(2)
+    query.mockClear()
+    vi.mocked(commands.getShownPage).mockClear()
+    vi.mocked(commands.getOpenProject).mockClear()
+
+    const change: Change = {
+      revision: '2', created: [], layers: ['raster'],
+      pages: { added: [], removed: [], changed: ['b'], reordered: false },
+      history: { current: 1, steps: ['paint'] },
+    }
+    width = 120
+    holdSummaries = true
+    act(() => tell('change', change))
+    await waitFor(() => expect(releaseSummaries).toBeDefined())
+    expect(await screen.findByText('a:100:120:1')).toBeInTheDocument()
+    expect(query.mock.calls.map(([request]) => request)).toEqual(expect.arrayContaining([
+      { query: 'get_project' }, { query: 'get_page', page: 'b' }, { query: 'get_story', page: 'b' },
+    ]))
+    expect(query).toHaveBeenCalledTimes(3)
+
+    // The outstanding summary read must not overwrite a newer page or selection-history event.
+    act(() => {
+      tell('page', 'b')
+      tell('change', {
+        ...change, revision: '3', layers: [],
+        pages: { added: [], removed: [], changed: [], reordered: false },
+        history: { current: 2, steps: ['paint', 'select'] },
+      })
+      releaseSummaries?.()
+    })
+    expect(await screen.findByText('b:100:120:2')).toBeInTheDocument()
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    expect(screen.getByText('b:100:120:2')).toBeInTheDocument()
+    expect(query).toHaveBeenCalledTimes(3)
+    expect(commands.getOpenProject).not.toHaveBeenCalled()
+    expect(commands.getShownPage).not.toHaveBeenCalled()
     view.unmount()
   })
 

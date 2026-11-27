@@ -12,6 +12,7 @@ import {
   useQuery,
 } from '@tanstack/react-query'
 import type { ParseKeys } from 'i18next'
+import { useMemo } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 
 import {
@@ -31,8 +32,12 @@ import i18n from './i18n'
 
 export const projectKey = ['project'] as const
 export const pageKey = ['page'] as const
-/** Each page Story lists, by its id, whether or not the canvas shows it. */
-export const pagesKey = ['pages'] as const
+/** Page data is shared by the canvas inspector and Story, keyed by project and page. */
+export const pageDataKey = (name: string | null, page: PageId | null) =>
+  [...pageKey, name, page] as const
+export const storyKey = ['story'] as const
+export const storyPageKey = (name: string | null, page: PageId) =>
+  [...storyKey, name, page] as const
 export const projectsKey = ['projects'] as const
 export const fontsKey = ['fonts', 'installed'] as const
 export const onlineFontsKey = ['fonts', 'online'] as const
@@ -46,8 +51,7 @@ export interface ProjectView {
   page: PageId | null
   pages: PageSummary[]
   history: History
-  /** Each page's revision when a change last came while it was shown, which its thumbnail
-   * follows; a page keeps its own after another is shown, or after it's removed. */
+  /** Each affected page's last revision, which its thumbnail follows. */
   revisions: Record<PageId, string>
 }
 
@@ -107,6 +111,15 @@ export function send<Args extends unknown[]>(
 const projectQuery = queryOptions({
   queryKey: projectKey,
   queryFn: async (): Promise<ProjectView | null> => {
+    // Changes and page events carry the history and shown page. Only the summaries
+    // need to be fetched again once the project is known. Merge into the latest cache
+    // value, since a selection or page event may arrive while the summaries load.
+    const cached = queryClient.getQueryData<ProjectView | null>(projectKey)
+    if (cached) {
+      const project = (await commands.query({ query: 'get_project' })) as ProjectAnswer
+      const latest = queryClient.getQueryData<ProjectView | null>(projectKey)
+      return latest ? { ...latest, pages: project.pages } : null
+    }
     const name = await commands.getOpenProject()
     if (name === null) return null
     const [page, project, history] = await Promise.all([
@@ -125,14 +138,14 @@ const projectQuery = queryOptions({
   },
 })
 
-const pageQuery = queryOptions({
-  queryKey: pageKey,
-  queryFn: async (): Promise<Page | null> => {
-    const page = await commands.getShownPage()
-    if (page === null) return null
-    return (await commands.query({ query: 'get_page', page })) as Page
-  },
-})
+const pageQuery = (name: string | null, page: PageId | null) =>
+  queryOptions({
+    queryKey: pageDataKey(name, page),
+    queryFn: async (): Promise<Page | null> => {
+      if (name === null || page === null) return null
+      return (await commands.query({ query: 'get_page', page })) as Page
+    },
+  })
 
 const fontsQuery = queryOptions({
   queryKey: fontsKey,
@@ -144,7 +157,7 @@ const onlineFontsQuery = queryOptions({
   queryFn: () => commands.listOnlineFonts(),
 })
 
-/** The open project, read again after every change the desktop tells. */
+/** The open project; changes supply history and page events supply the shown page. */
 export function useProject(enabled = true) {
   return useQuery({ ...projectQuery, enabled })
 }
@@ -156,22 +169,33 @@ export function usePages(enabled = true) {
 
 /** The page the editor shows, with its layers. */
 export function usePage(enabled = true) {
-  return useQuery({ ...pageQuery, enabled })
+  const { data: shown } = useQuery({
+    ...projectQuery,
+    enabled,
+    select: (project) => [project?.name ?? null, project?.page ?? null] as const,
+  })
+  const [name, page] = shown ?? [null, null]
+  return useQuery({ ...pageQuery(name, page), enabled: enabled && page !== null })
 }
 
-/** A page with its layers, and its texts in the scene's reading order, as Story lists them. */
+/** Story observes the same page query as the inspector, and reads its order separately. */
 export function usePageStory(page: PageId, enabled = true) {
-  return useQuery({
-    queryKey: [...pagesKey, page],
-    queryFn: async () => {
-      const [layers, story] = await Promise.all([
-        commands.query({ query: 'get_page', page }),
-        commands.query({ query: 'get_story', page }),
-      ])
-      return { page: layers as Page, story: story as LayerId[] }
-    },
+  const { data: name = null } = useQuery({
+    ...projectQuery,
     enabled,
+    select: (project) => project?.name ?? null,
   })
+  const layers = useQuery({ ...pageQuery(name, page), enabled: enabled && name !== null }).data
+  const story = useQuery({
+    queryKey: storyPageKey(name, page),
+    queryFn: async () => (await commands.query({ query: 'get_story', page })) as LayerId[],
+    enabled: enabled && name !== null,
+  }).data
+  const data = useMemo(
+    () => (layers && story ? { page: layers, story } : undefined),
+    [layers, story],
+  )
+  return { data }
 }
 
 /** Installed fonts only; looking at this list never downloads the online catalog. */
@@ -276,8 +300,11 @@ export function useImportPages() {
  * change starts one, is joined rather than started again, and one a later change starts is waited
  * for too. An edit shown before it lands holds until then, so it doesn't flash back. */
 export async function readPage(): Promise<void> {
-  do await queryClient.refetchQueries({ queryKey: pageKey }, { cancelRefetch: false })
-  while (queryClient.isFetching({ queryKey: pageKey }) > 0)
+  const project = queryClient.getQueryData<ProjectView | null>(projectKey)
+  if (!project?.page) return
+  const filters = { queryKey: pageDataKey(project.name, project.page), exact: true }
+  do await queryClient.refetchQueries(filters, { cancelRefetch: false })
+  while (queryClient.isFetching(filters) > 0)
 }
 
 export async function refresh(...keys: QueryKey[]): Promise<void> {

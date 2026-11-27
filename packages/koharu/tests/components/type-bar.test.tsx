@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { TypeBar } from '@/components/editor/TypeBar'
-import { fontsKey, pageKey, preferencesKey, queryClient } from '@/lib/queries'
+import { fontsKey, pageDataKey, preferencesKey, projectKey, queryClient } from '@/lib/queries'
 import { useKoharuStore } from '@/lib/store'
 import { commands, type Change, type Layer, type Op } from '@koharu/ipc/protocol'
 
@@ -47,7 +47,10 @@ async function chooseSize(
     { ...base, id: 'caption', name: 'caption', kind: 'text', content, frame: 'point' },
     { ...base, id: 'untranslated', name: 'untranslated', kind: 'block', source: { content } },
   ]
-  queryClient.setQueryData(pageKey, { id: 'p', size: bounds, background: null, layers })
+  queryClient.setQueryData(projectKey, {
+    name: 'Book', page: 'p', pages: [], history: { steps: [], current: 0 }, revisions: {},
+  })
+  queryClient.setQueryData(pageDataKey('Book', 'p'), { id: 'p', size: bounds, background: null, layers })
   queryClient.setQueryData(preferencesKey, { renderer: {} })
   queryClient.setQueryData(fontsKey, [])
   useKoharuStore.setState({ selectedLayers: layers.map(({ id }) => id), selectionBounds: bounds })
@@ -131,7 +134,10 @@ function fittedTypeBar(typing = false) {
     frame: { box: { bounds, fit: 'best' } },
     style: { chars: { size: 12, stroke_width: 3, stroke: [1, 1, 1, 1] } },
   }
-  queryClient.setQueryData(pageKey, { id: 'p', size: bounds, background: null, layers: [layer] })
+  queryClient.setQueryData(projectKey, {
+    name: 'Book', page: 'p', pages: [], history: { steps: [], current: 0 }, revisions: {},
+  })
+  queryClient.setQueryData(pageDataKey('Book', 'p'), { id: 'p', size: bounds, background: null, layers: [layer] })
   queryClient.setQueryData(preferencesKey, { renderer: {} })
   queryClient.setQueryData(fontsKey, [])
   useKoharuStore.setState({
