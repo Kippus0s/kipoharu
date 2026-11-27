@@ -7,7 +7,7 @@ import { useRef, useState, type FormEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ListSearch } from '@/components/controls/PickerSearch'
-import { pageKey, projectKey, projectsKey, refresh, useProjects } from '@/lib/queries'
+import { projectsKey, refresh, useProjects } from '@/lib/queries'
 import { useKoharuStore } from '@/lib/store'
 import { commands } from '@koharu/ipc/protocol'
 import {
@@ -37,16 +37,13 @@ export function StartView() {
   const matches = projects.filter((project) => filter.contains(project, query))
   const [name, setName] = useState('')
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null)
+  // The desktop emits project/page events on create and open; they own the refresh.
   const creation = useMutation({
     mutationFn: (projectName: string) => commands.create(projectName),
-    onSuccess: async () => {
-      await refresh(projectKey, pageKey)
-      setName('')
-    },
+    onSuccess: () => setName(''),
   })
   const opening = useMutation({
     mutationFn: (projectName: string) => commands.open(projectName),
-    onSuccess: () => refresh(projectKey, pageKey),
   })
   const deletion = useMutation({
     mutationFn: (projectName: string) => commands.deleteProject(projectName),

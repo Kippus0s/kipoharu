@@ -3,7 +3,7 @@ import { createElement, StrictMode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import Providers from '@/app/providers'
-import { queryClient, readPage, usePage, usePageStory, useProject } from '@/lib/queries'
+import { projectKey, queryClient, readPage, usePage, usePageStory, useProject } from '@/lib/queries'
 import { useKoharuStore } from '@/lib/store'
 import { commands, events, type Change, type Preferences } from '@koharu/ipc/protocol'
 
@@ -193,6 +193,35 @@ describe('Tauri runtime', () => {
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
     expect(query.mock.calls.filter(([request]) => request.query === 'get_page')).toHaveLength(1)
     expect(query.mock.calls.filter(([request]) => request.query === 'get_story')).toHaveLength(0)
+    view.unmount()
+  })
+
+  it('shares one initial project read with page events and retains newer navigation', async () => {
+    let open: string | null = null
+    desktop(() => open)
+    let releasePage: ((page: string) => void) | undefined
+    vi.mocked(commands.getShownPage).mockImplementation(() => new Promise((resolve) => {
+      releasePage = resolve
+    }))
+    const view = render(createElement(Providers, null, createElement(ProjectProbe)))
+    expect(await screen.findByText('Closed')).toBeInTheDocument()
+    vi.mocked(commands.getOpenProject).mockClear()
+
+    open = 'Book'
+    act(() => {
+      tell('project', 'Book')
+      tell('page', 'a')
+    })
+    await waitFor(() => expect(releasePage).toBeDefined())
+    act(() => {
+      tell('page', 'b')
+      releasePage?.('a')
+    })
+    expect(await screen.findByText('Book')).toBeInTheDocument()
+    expect(queryClient.getQueryData(projectKey)).toMatchObject({ name: 'Book', page: 'b' })
+    expect(commands.getOpenProject).toHaveBeenCalledTimes(1)
+    expect(commands.getShownPage).toHaveBeenCalledTimes(1)
+    expect(commands.query).toHaveBeenCalledTimes(2)
     view.unmount()
   })
 

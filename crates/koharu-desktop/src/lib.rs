@@ -13,7 +13,7 @@ use anyhow::{Context as _, Result};
 use koharu_pipeline::{Pipeline, PipelineConfig};
 use koharu_renderer::{Gpu, Renderer, RendererConfig};
 use tauri::Manager as _;
-use tauri_plugin_log::{Target, TargetKind, log::LevelFilter};
+use tauri_plugin_log::{RotationStrategy, Target, TargetKind, log::LevelFilter};
 use tauri_plugin_window_state::StateFlags;
 use tauri_runtime_cef::{Cef, CefRuntime};
 
@@ -93,7 +93,8 @@ pub fn run(context: tauri::Context<CefRuntime>) -> Result<()> {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(LevelFilter::Info)
-                .max_file_size(1_000_000)
+                .max_file_size(10_000_000)
+                .rotation_strategy(RotationStrategy::KeepSome(3))
                 .targets([Target::new(TargetKind::LogDir { file_name: None })])
                 .build(),
         )

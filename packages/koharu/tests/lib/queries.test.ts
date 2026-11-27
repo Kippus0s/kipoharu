@@ -1,3 +1,4 @@
+import { CancelledError } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { queryClient, send } from '@/lib/queries'
@@ -10,6 +11,13 @@ describe('send', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('does not report intentional cancellation as an action failure', async () => {
+    const add = vi.spyOn(toast, 'add')
+    send(() => Promise.reject(new CancelledError()))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(add).not.toHaveBeenCalled()
   })
 
   it('lets the cache drop each command as soon as it settles, failed or not', async () => {

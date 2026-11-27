@@ -3,8 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { StartView } from '@/components/start/StartView'
+import { hear } from '@/lib/events'
 import { queryClient, useProject } from '@/lib/queries'
-import { commands } from '@koharu/ipc/protocol'
+import { commands, events } from '@koharu/ipc/protocol'
 
 function ProjectFlow() {
   const project = useProject().data
@@ -22,7 +23,15 @@ function desktop(open: () => string | null) {
   )
 }
 
+const handlers = new Map<string, (payload: unknown) => void>()
+
+function tellOpened(name: string, page: string | null) {
+  handlers.get('project')?.(name)
+  handlers.get('page')?.(page)
+}
+
 function renderProjectFlow() {
+  void hear(() => true)
   return render(
     <QueryClientProvider client={queryClient}>
       <ProjectFlow />
@@ -35,6 +44,14 @@ describe('StartView', () => {
   // would show none.
   beforeEach(() => {
     vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(400)
+    handlers.clear()
+    for (const name of Object.keys(events) as (keyof typeof events)[]) {
+      vi.spyOn(events, name).mockImplementation(async (handler: (payload: never) => void) => {
+        handlers.set(name, handler as (payload: unknown) => void)
+        return () => undefined
+      })
+    }
+    vi.spyOn(commands, 'getPipelineEvents').mockResolvedValue([])
   })
   afterEach(() => vi.restoreAllMocks())
 
@@ -44,6 +61,7 @@ describe('StartView', () => {
     vi.spyOn(commands, 'listProjects').mockResolvedValue([])
     const create = vi.spyOn(commands, 'create').mockImplementation(async () => {
       opened = true
+      tellOpened('Volume 1', null)
       return null
     })
     renderProjectFlow()
@@ -64,6 +82,7 @@ describe('StartView', () => {
     vi.spyOn(commands, 'listProjects').mockResolvedValue(['Blue Archive'])
     const open = vi.spyOn(commands, 'open').mockImplementation(async () => {
       opened = true
+      tellOpened('Blue Archive', 'first')
       return null
     })
     renderProjectFlow()
@@ -71,10 +90,18 @@ describe('StartView', () => {
     const project = (await screen.findByText('Blue Archive')).closest('button')
     if (!project) throw new Error('project row is not interactive')
     await waitFor(() => expect(project).toBeEnabled())
+    await waitFor(() => expect(queryClient.isFetching({ queryKey: ['project'] })).toBe(0))
+    vi.mocked(commands.getOpenProject).mockClear()
+    vi.mocked(commands.getShownPage).mockClear()
+    vi.mocked(commands.query).mockClear()
     fireEvent.click(project)
 
     await waitFor(() => expect(open).toHaveBeenCalledWith('Blue Archive'))
     expect(await screen.findByText('Opened Blue Archive')).toBeInTheDocument()
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    expect(commands.getOpenProject).toHaveBeenCalledTimes(1)
+    expect(commands.getShownPage).toHaveBeenCalledTimes(1)
+    expect(commands.query).toHaveBeenCalledTimes(2)
   })
 
   it('confirms before deleting a managed project', async () => {

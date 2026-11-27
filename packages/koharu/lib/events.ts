@@ -6,12 +6,14 @@ import { toast } from '@koharu/ui/components/toast'
 import { toHex } from './color'
 import i18n from './i18n'
 import {
+  discardQueuedRefresh,
   pageDataKey,
   pageKey,
   projectKey,
   queryClient,
   queueRefresh,
   refresh,
+  rememberPageEvent,
   type ProjectView,
 } from './queries'
 import {
@@ -66,7 +68,7 @@ export function hear(active: () => boolean): Promise<void> {
 
 /** Cancel even an initial read, whose result might predate the event. */
 function rereadProject(): void {
-  void queryClient.cancelQueries({ queryKey: projectKey, exact: true }, { revert: false })
+  void queryClient.cancelQueries({ queryKey: projectKey, exact: true })
   void refresh(projectKey).catch(() => undefined)
 }
 
@@ -79,11 +81,12 @@ function receiveProject(name: string | null): void {
     store.selectPages([])
     store.selectLayers([])
   }
-  void queryClient.cancelQueries({ queryKey: projectKey, exact: true }, { revert: false })
+  discardQueuedRefresh(projectKey)
   for (const queryKey of [pageKey, ['thumbnail']]) {
     queryClient.removeQueries({ queryKey })
   }
   if (name === null) {
+    void queryClient.cancelQueries({ queryKey: projectKey, exact: true })
     queryClient.setQueryData(projectKey, null)
   } else {
     // Clear the previous view so the next query reads name, shown page and history again.
@@ -93,10 +96,13 @@ function receiveProject(name: string | null): void {
 
 /** The page event is authoritative; changing page switches the shared page query's key. */
 function receivePage(page: PageId | null): void {
+  rememberPageEvent(page)
   const project = queryClient.getQueryData<ProjectView | null>(projectKey)
   if (project) {
     queryClient.setQueryData<ProjectView>(projectKey, { ...project, page })
-  } else if (page !== null) {
+  } else if (page !== null && queryClient.isFetching({ queryKey: projectKey, exact: true }) === 0) {
+    // The project event normally started the full read already. Only recover
+    // here if there is no read in progress. The read itself merges newer page events.
     rereadProject()
   }
   if (page !== null && useKoharuStore.getState().selectedPages.length === 0) {

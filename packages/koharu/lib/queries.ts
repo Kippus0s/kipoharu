@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  isCancelledError,
   MutationCache,
   MutationObserver,
   QueryCache,
@@ -61,6 +62,7 @@ declare module '@tanstack/react-query' {
 
 /** A failed command's toast: the desktop rejects with its error's message. */
 function report(error: unknown): void {
+  if (isCancelledError(error)) return
   const description =
     error instanceof Error
       ? error.message
@@ -105,6 +107,14 @@ export function send<Args extends unknown[]>(
     .finally(() => observer.reset())
 }
 
+// Page notifications can arrive while the initial project read is still pending.
+// Track their identity so a late read cannot replace a newer navigation event.
+let lastPageEvent: { page: PageId | null } | undefined
+
+export function rememberPageEvent(page: PageId | null): void {
+  lastPageEvent = { page }
+}
+
 const projectQuery = queryOptions({
   queryKey: projectKey,
   queryFn: async (): Promise<ProjectView | null> => {
@@ -117,6 +127,7 @@ const projectQuery = queryOptions({
       const latest = queryClient.getQueryData<ProjectView | null>(projectKey)
       return latest ? { ...latest, pages: project.pages } : null
     }
+    const beforePageEvent = lastPageEvent
     const name = await commands.getOpenProject()
     if (name === null) return null
     const [page, project, history] = await Promise.all([
@@ -127,7 +138,7 @@ const projectQuery = queryOptions({
     const known = queryClient.getQueryData<ProjectView | null>(projectKey)
     return {
       name,
-      page,
+      page: lastPageEvent && lastPageEvent !== beforePageEvent ? lastPageEvent.page : page,
       pages: (project as ProjectAnswer).pages,
       history: history as History,
       revisions: known?.name === name ? known.revisions : {},
@@ -292,6 +303,12 @@ export function useImportPages() {
  * until they are next viewed. Separate document edits and undo steps are not merged. */
 const queuedRefreshes = new WeakMap<object, Promise<void>>()
 
+/** A full project reset supersedes any queued refresh of the old project view. */
+export function discardQueuedRefresh(queryKey: QueryKey): void {
+  const query = queryClient.getQueryCache().find({ queryKey, exact: true })
+  if (query) queuedRefreshes.delete(query)
+}
+
 function pendingRefresh(queryKey: QueryKey): Promise<void> | undefined {
   const query = queryClient.getQueryCache().find({ queryKey, exact: true })
   return query && queuedRefreshes.get(query)
@@ -307,6 +324,7 @@ export function queueRefresh(queryKey: QueryKey): Promise<void> {
   if (queued) return queued
   const promise = new Promise<void>((resolve) => {
     setTimeout(() => {
+      if (queuedRefreshes.get(query) !== promise) return resolve()
       queuedRefreshes.delete(query)
       // A project switch or page removal may have discarded this cache entry.
       if (queryClient.getQueryCache().find(filters) !== query) return resolve()
