@@ -83,9 +83,9 @@ pub enum Op {
         index: usize,
         layer: Box<NewLayer>,
     },
-    /// Copy a layer with everything inside it, its pixels, text, and
-    /// attributes. The copy goes just above the original unless `index` says
-    /// where.
+    /// Copy a layer just above the original unless `index` says where.
+    /// Direct text and block copies are plain lettering without masks or
+    /// clean-up; other layers copy their whole subtree.
     DuplicateLayer {
         layer: Ref,
         #[serde(default)]

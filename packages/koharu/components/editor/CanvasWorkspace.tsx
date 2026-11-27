@@ -112,8 +112,8 @@ export function CanvasWorkspace() {
   const selectedLayers = useKoharuStore((state) => state.selectedLayers)
   const typing = useKoharuStore((state) => state.typing)
   const { selectLayers, setTool } = useKoharuStore.getState()
-  // The scene already clones whole text and translation blocks, including their styling.
-  // Labels identify the copies without also selecting a block's new mask and clean-up.
+  // The scene duplicates lettering without its masks or clean-up, preserving styling.
+  // Labels identify the new standalone text layers.
   const duplication = useMutation({
     mutationFn: (layers: LayerId[]) =>
       commands.edit({

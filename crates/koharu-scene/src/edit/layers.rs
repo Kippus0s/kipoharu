@@ -10,7 +10,7 @@ use kurbo::{Affine, BezPath};
 
 use super::{Place, Run};
 use crate::{
-    Content, Created, Error, Layer, LayerId, LayerKind, NewLayer, Offset, Path, Ref, Result,
+    Blend, Content, Created, Error, Layer, LayerId, LayerKind, NewLayer, Offset, Path, Ref, Result,
     Transform, Uuid,
     project::{ids, locked_inside, may_hold},
 };
@@ -110,6 +110,25 @@ impl Run<'_, '_> {
         }
         let (uuid, label) = self.new_id(op, id)?;
         let mut copy = self.get(&place).clone();
+        // A direct text duplicate is lettering, not another clean-up of the scan.
+        match &mut copy.content {
+            Content::Block(block) => {
+                let text = block.translation.take().unwrap_or_else(|| {
+                    let mut text = block.source.clone();
+                    // The OCR source is never drawn; keep its frame, not its wording.
+                    text.content = Default::default();
+                    text
+                });
+                copy.content = Content::Text(Box::new(text));
+                copy.children.clear();
+                copy.attributes.clear();
+                if copy.blend == Blend::PassThrough {
+                    copy.blend = Blend::Normal;
+                }
+            }
+            Content::Text(_) => copy.children.clear(),
+            _ => {}
+        }
         self.renumber(op, &mut copy, LayerId(uuid), label)?;
         self.project.insert(place.page, list, index, copy);
         Ok(())
