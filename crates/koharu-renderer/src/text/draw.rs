@@ -9,7 +9,8 @@ use super::TextLayout;
 use crate::Drawing;
 
 /// Draws `layout`'s glyph runs onto `drawing` through `transform`, its
-/// strokes too when `strokes` says so. Strokes draw first, under every fill,
+/// strokes too when `strokes` says so. Outer strokes draw before inner strokes,
+/// both under every fill,
 /// as Photoshop draws an Outside stroke under its type: as the glyphs grown
 /// by the stroke's width with round joins.
 pub(crate) fn draw(
@@ -19,13 +20,33 @@ pub(crate) fn draw(
     strokes: bool,
 ) -> Result<()> {
     drawing.scene.set_transform(transform);
-    let passes: &[bool] = if strokes { &[true, false] } else { &[false] };
-    for &stroking in passes {
+    enum Pass {
+        Outer,
+        Inner,
+        Fill,
+    }
+    let passes: &[Pass] = if strokes {
+        &[Pass::Outer, Pass::Inner, Pass::Fill]
+    } else {
+        &[Pass::Fill]
+    };
+    for pass in passes {
         for (glyphs, run) in layout.runs.iter().zip(&layout.resolved.runs) {
-            let (paint, width, join) = match (stroking, run.stroke) {
-                (true, Some((color, width))) => (color, f64::from(width), Join::Round),
-                (true, None) => continue,
-                (false, _) => (run.fill, 0.0, Join::Miter),
+            let (paint, width, join) = match pass {
+                Pass::Outer => {
+                    let Some((color, width)) = run.outer_stroke else {
+                        continue;
+                    };
+                    let inner = run.stroke.map_or(0.0, |(_, width)| width);
+                    (color, f64::from(inner + width), Join::Round)
+                }
+                Pass::Inner => {
+                    let Some((color, width)) = run.stroke else {
+                        continue;
+                    };
+                    (color, f64::from(width), Join::Round)
+                }
+                Pass::Fill => (run.fill, 0.0, Join::Miter),
             };
             let font = &glyphs.font;
             // A synthetic bold grows each side by a fiftieth of the size.
@@ -94,13 +115,15 @@ mod tests {
             .into_iter()
             .find_map(|family| library.family(family).ok())
             .expect("an installed sans-serif");
-        let laid = |stroke_width| -> Result<TextLayout> {
+        let laid = |stroke_width, outer_stroke_width| -> Result<TextLayout> {
             let text = Text {
                 content: "Stroked".into(),
                 style: TextStyle {
                     chars: CharStyle {
                         stroke: Some(Rgba([1.0, 0.0, 0.0, 1.0])),
                         stroke_width,
+                        outer_stroke: Some(Rgba([0.0, 0.0, 1.0, 1.0])),
+                        outer_stroke_width,
                         ..CharStyle::default()
                     },
                     ..TextStyle::default()
@@ -109,8 +132,14 @@ mod tests {
             };
             Ok(crate::text::layout(&text, |_, _| Ok(vec![font.clone()]))?.expect("a layout"))
         };
-        let (plain, stroked) = (laid(None)?, laid(Some(3.0))?);
+        let (plain, stroked, double) = (
+            laid(None, None)?,
+            laid(Some(3.0), None)?,
+            laid(Some(3.0), Some(2.0))?,
+        );
         assert_eq!(stroked.bounds, plain.bounds.inflate(3.0, 3.0));
+        assert_eq!(double.bounds, plain.bounds.inflate(5.0, 5.0));
+        assert_eq!(double.resolved.runs[0].outer_stroke.unwrap().1, 2.0);
         let Ok(gpu) = Gpu::get() else {
             eprintln!("skipped drawing without a GPU");
             return Ok(());
@@ -133,9 +162,12 @@ mod tests {
                 .filter(|pixel| pixel.0[0] > 200 && pixel.0[1] < 60 && pixel.0[3] > 200)
                 .count()
         };
-        let (plain, stroked) = (draw(&plain)?, draw(&stroked)?);
+        let (plain, stroked, double) = (draw(&plain)?, draw(&stroked)?, draw(&double)?);
         assert_eq!(red(&plain), 0);
         assert!(red(&stroked) > 100, "{} red pixels", red(&stroked));
+        assert!(red(&double) > 100);
+        assert!(double.pixels().any(|pixel| pixel.0 == [0, 0, 255, 255]));
+        assert!(double.pixels().any(|pixel| pixel.0 == [0, 0, 0, 255]));
         assert!(
             stroked
                 .pixels()

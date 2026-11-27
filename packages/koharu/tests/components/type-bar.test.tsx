@@ -170,6 +170,39 @@ describe('rendered type bar values', () => {
     }))
   })
 
+  it('sets paragraph line spacing without changing the fitted font size', async () => {
+    const edit = vi.spyOn(commands, 'edit').mockResolvedValue({
+      revision: '2', created: [], layers: [],
+      pages: { added: [], removed: [], changed: [], reordered: false },
+      history: { current: 1, steps: [] },
+    } satisfies Change)
+    fittedTypeBar()
+    expect(screen.getByLabelText('Line spacing (%)')).toHaveDisplayValue('120')
+    fireEvent.click(screen.getByLabelText('Choose line spacing'))
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '150' }))
+    await waitFor(() => expect(edit).toHaveBeenCalledWith({
+      label: 'set_style',
+      ops: [{ op: 'update_layer', layer: 'fitted', patch: { style: { line_height: 1.5 } } }],
+    }))
+  })
+
+  it('adds the second outline independently in fitted pixels', async () => {
+    const edit = vi.spyOn(commands, 'edit').mockResolvedValue({
+      revision: '2', created: [], layers: [],
+      pages: { added: [], removed: [], changed: [], reordered: false },
+      history: { current: 1, steps: [] },
+    } satisfies Change)
+    fittedTypeBar()
+    fireEvent.click(screen.getByLabelText('Choose second outline width'))
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '5' }))
+    await waitFor(() => expect(edit).toHaveBeenCalledWith({
+      label: 'set_style',
+      ops: [{ op: 'update_layer', layer: 'fitted', patch: {
+        style: { chars: { outer_stroke_width: 2, outer_stroke: [0, 0, 0, 1] } },
+      } }],
+    }))
+  })
+
   it('uses the live canvas layout rather than the committed snapshot while typing', async () => {
     const style = vi.spyOn(commands, 'styleTyping').mockResolvedValue(null)
     fittedTypeBar(true)
@@ -179,6 +212,11 @@ describe('rendered type bar values', () => {
     fireEvent.click(await screen.findByRole('menuitemradio', { name: '3' }))
     await waitFor(() => expect(style).toHaveBeenCalledWith({
       stroke_width: 1.5, stroke: [1, 1, 1, 1],
+    }))
+    fireEvent.click(screen.getByLabelText('Choose second outline width'))
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: '4' }))
+    await waitFor(() => expect(style).toHaveBeenCalledWith({
+      outer_stroke_width: 2, outer_stroke: [0, 0, 0, 1],
     }))
   })
 })

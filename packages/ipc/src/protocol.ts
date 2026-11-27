@@ -126,7 +126,7 @@ export type Change = {
 };
 
 /**  One of the values a character's style holds. */
-export type CharKey = "family" | "weight" | "italic" | "size" | "fill" | "stroke" | "stroke_width";
+export type CharKey = "family" | "weight" | "italic" | "size" | "fill" | "stroke" | "stroke_width" | "outer_stroke" | "outer_stroke_width";
 
 /**
  *  Character values; each is also a mark key on a span, and a mark wins for
@@ -140,6 +140,10 @@ export type CharStyle = {
 	fill?: Rgba | null,
 	stroke?: Rgba | null,
 	stroke_width?: number | null,
+	/**  A second outline outside the first, if present. */
+	outer_stroke?: Rgba | null,
+	/**  Additional width beyond the first outline, in local pixels. */
+	outer_stroke_width?: number | null,
 };
 
 /**  The app's theme colours the canvas draws with. */

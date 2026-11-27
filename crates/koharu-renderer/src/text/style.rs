@@ -34,6 +34,8 @@ pub(super) struct Span {
     pub fill: Color,
     /// The colour and width of a stroke.
     pub stroke: Option<(Color, f32)>,
+    /// The outer stroke colour and additional width.
+    pub outer_stroke: Option<(Color, f32)>,
 }
 
 impl Styled {
@@ -59,6 +61,12 @@ impl Styled {
                 fill: style.fill.map_or(Color::BLACK, Color::from),
                 stroke: match (style.stroke, style.stroke_width) {
                     (Some(color), Some(width)) if width > 0.0 => {
+                        Some((Color::from(color), width as f32))
+                    }
+                    _ => None,
+                },
+                outer_stroke: match (style.outer_stroke, style.outer_stroke_width) {
+                    (Some(color), Some(width)) if width > 0.0 && color.0[3] > 0.0 => {
                         Some((Color::from(color), width as f32))
                     }
                     _ => None,

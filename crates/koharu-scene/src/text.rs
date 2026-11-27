@@ -31,6 +31,12 @@ pub struct CharStyle {
     pub stroke: Option<Rgba>,
     #[serde(default)]
     pub stroke_width: Option<f64>,
+    /// A second outline outside the first, if present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_stroke: Option<Rgba>,
+    /// Additional width beyond the first outline, in local pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outer_stroke_width: Option<f64>,
 }
 
 impl CharStyle {
@@ -45,6 +51,8 @@ impl CharStyle {
             fill: self.fill.or(base.fill),
             stroke: self.stroke.or(base.stroke),
             stroke_width: self.stroke_width.or(base.stroke_width),
+            outer_stroke: self.outer_stroke.or(base.outer_stroke),
+            outer_stroke_width: self.outer_stroke_width.or(base.outer_stroke_width),
         }
     }
 }

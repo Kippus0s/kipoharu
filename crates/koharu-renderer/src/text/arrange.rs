@@ -111,7 +111,11 @@ pub(super) fn arrange(
     let stroke = styled
         .spans
         .iter()
-        .filter_map(|span| span.stroke.map(|(_, width)| width * scale))
+        .map(|span| {
+            let inner = span.stroke.map_or(0.0, |(_, width)| width);
+            let outer = span.outer_stroke.map_or(0.0, |(_, width)| width);
+            (inner + outer) * scale
+        })
         .fold(0.0, f32::max);
     let utf16 = |at: &usize| utf16(&styled.text, *at);
     Ok(TextLayout {
@@ -398,6 +402,7 @@ fn runs(shaped: &ShapedText, glyphs: &[Positioned], scale: f32) -> (Vec<GlyphRun
             size: span.size * scale,
             fill: span.fill,
             stroke: span.stroke.map(|(color, width)| (color, width * scale)),
+            outer_stroke: span.outer_stroke.map(|(color, width)| (color, width * scale)),
         });
         glyph_runs.push(GlyphRun {
             font: font.clone(),
@@ -536,6 +541,7 @@ mod tests {
                 size: 16.0,
                 fill: koharu_scene::Color::BLACK,
                 stroke: None,
+                outer_stroke: None,
             }],
             vertical: false,
             align: Align::Start,

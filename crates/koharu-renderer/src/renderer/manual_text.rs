@@ -57,6 +57,9 @@ impl Renderer {
                                 if let Some(width) = text.style.chars.stroke_width {
                                     local["style"]["chars"]["stroke_width"] = json!(width * scale);
                                 }
+                                if let Some(width) = text.style.chars.outer_stroke_width {
+                                    local["style"]["chars"]["outer_stroke_width"] = json!(width * scale);
+                                }
                                 let mut spans = text.content.0.clone();
                                 scale_marks(&mut spans, scale);
                                 if spans != text.content.0 {
@@ -183,6 +186,9 @@ fn base_patch(text: &Text, translation: bool, size: f64, scale: f64, fit: &str) 
     if let Some(width) = text.style.chars.stroke_width {
         patch["style"]["chars"]["stroke_width"] = json!(width * scale);
     }
+    if let Some(width) = text.style.chars.outer_stroke_width {
+        patch["style"]["chars"]["outer_stroke_width"] = json!(width * scale);
+    }
     wrapped(patch, translation)
 }
 
@@ -190,6 +196,8 @@ fn scale_marks(spans: &mut [Span], scale: f64) {
     for span in spans {
         span.attributes.size = span.attributes.size.map(|size| size * scale);
         span.attributes.stroke_width = span.attributes.stroke_width.map(|width| width * scale);
+        span.attributes.outer_stroke_width =
+            span.attributes.outer_stroke_width.map(|width| width * scale);
     }
 }
 
@@ -210,8 +218,8 @@ mod tests {
             ),
         ] {
             let text: Text = serde_json::from_value(json!({
-                "frame": frame, "style": {"chars": {"size": 32, "stroke_width": 2}},
-                "content": [{"insert": "Hi", "attributes": {"size": 32, "stroke_width": 4}}]
+                "frame": frame, "style": {"chars": {"size": 32, "stroke_width": 2, "outer_stroke_width": 6}},
+                "content": [{"insert": "Hi", "attributes": {"size": 32, "stroke_width": 4, "outer_stroke_width": 8}}]
             }))
             .unwrap();
             assert!(text.is_best_fit());
@@ -228,12 +236,13 @@ mod tests {
             assert_eq!(local["frame"], fit_patch(&text, "none")["frame"]);
             assert_eq!(
                 local["style"]["chars"],
-                json!({"size": 16.0, "stroke_width": 1.0})
+                json!({"size": 16.0, "stroke_width": 1.0, "outer_stroke_width": 3.0})
             );
             let mut spans = text.content.0.clone();
             scale_marks(&mut spans, 0.5);
             assert_eq!(spans[0].attributes.size, Some(16.0));
             assert_eq!(spans[0].attributes.stroke_width, Some(2.0));
+            assert_eq!(spans[0].attributes.outer_stroke_width, Some(4.0));
         }
     }
 }

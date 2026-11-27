@@ -149,6 +149,12 @@
     "borderColor": "Border color",
     "borderWidth": "Border width",
     "chooseBorderWidth": "Choose border width",
+    "lineSpacing": "Line spacing (%)",
+    "chooseLineSpacing": "Choose line spacing",
+    "outerBorder": "Second outline",
+    "outerBorderColor": "Second outline color",
+    "outerBorderWidth": "Second outline width",
+    "chooseOuterBorderWidth": "Choose second outline width",
     "chooseFontSize": "Choose font size",
     "fitModes": {
       "best": "Best Fit",

@@ -1,7 +1,7 @@
 'use client'
 
 import { useMutation } from '@tanstack/react-query'
-import { AlignCenter, AlignLeft, AlignRight, Bold, ChevronDown, Italic } from 'lucide-react'
+import { AlignCenter, AlignLeft, AlignRight, Bold, ChevronDown, Italic, MoveVertical } from 'lucide-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useTranslation } from 'react-i18next'
@@ -152,7 +152,11 @@ export function TypeBar() {
   const applyChars = (patch: CharStyle) => {
     if (!typing) return apply({ chars: patch })
     // A mark can't unset a value, so no border on some characters is a border no wide.
-    const marked = patch.stroke === null ? { ...patch, stroke: undefined, stroke_width: 0 } : patch
+    const marked = {
+      ...patch,
+      ...(patch.stroke === null ? { stroke: undefined, stroke_width: 0 } : {}),
+      ...(patch.outer_stroke === null ? { outer_stroke: undefined, outer_stroke_width: 0 } : {}),
+    }
     send(commands.styleTyping, marked)
   }
 
@@ -204,7 +208,7 @@ export function TypeBar() {
     })
   }
   // Fitting scales both sizes and strokes. Read the actual layout, never the canvas zoom.
-  const renderedNumber = (key: 'size' | 'stroke_width', fallback: number): number | null => {
+  const renderedNumber = (key: 'size' | 'stroke_width' | 'outer_stroke_width', fallback: number): number | null => {
     const round = (value: number) => Math.round(value * 100) / 100
     if (typing) return mixed.has(key) ? null : round((chars[key] ?? fallback) * typing.scale)
     const values = targets.flatMap((layer) => {
@@ -229,19 +233,36 @@ export function TypeBar() {
     : mixed.has('size') || mixedFit
       ? null
       : Math.round((chars.size ?? 24) * 100) / 100
-  const strokeWidth = chars.stroke_width ?? 0
-  const effectiveStrokeWidth = renderedNumber('stroke_width', 0)
-  const stroke = chars.stroke ?? null
-  // The field displays rendered pixels; convert back to each text's nominal style on edit.
-  const changeStrokeWidth = (width: number) => {
-    const patch = (scale: number): CharStyle => ({
-      stroke_width: width / scale,
-      stroke: stroke ?? toRgba(WHITE),
-    })
-    if (typing) applyChars(patch(typing.scale))
-    else apply((layer) => ({ chars: patch(scales.get(layer.id) ?? 1) }))
-  }
-  const strokeEnabled = stroke !== null && stroke[3] > 0 && strokeWidth > 0
+  const outlines = [
+    {
+      colorKey: 'stroke',
+      widthKey: 'stroke_width',
+      defaultColor: WHITE,
+      label: 'border',
+      colorLabel: 'borderColor',
+      widthLabel: 'borderWidth',
+      menuLabel: 'chooseBorderWidth',
+    },
+    {
+      colorKey: 'outer_stroke',
+      widthKey: 'outer_stroke_width',
+      defaultColor: BLACK,
+      label: 'outerBorder',
+      colorLabel: 'outerBorderColor',
+      widthLabel: 'outerBorderWidth',
+      menuLabel: 'chooseOuterBorderWidth',
+    },
+  ] as const
+  const lineHeights = targets.flatMap((layer) => {
+    const text = letteringOf(layer)
+    return text ? [Math.round((text.style?.line_height ?? 1.2) * 1000) / 10] : []
+  })
+  const lineHeight =
+    drafted?.line_height != null
+      ? Math.round(drafted.line_height * 1000) / 10
+      : lineHeights.every((value) => value === lineHeights[0])
+        ? (lineHeights[0] ?? 120)
+        : null
   const direction: Direction = lettering?.direction ?? 'horizontal'
   const align: Align = style.align ?? (direction === 'vertical' ? 'start' : 'center')
 
@@ -507,33 +528,80 @@ export function TypeBar() {
           <span className='ml-2 opacity-60'>{t(`inspector.${direction}`)}</span>
         </TooltipContent>
       </Tooltip>
-      <div role='group' aria-label={t('inspector.border')} className='flex items-center gap-1'>
-        <ColorWell
-          label={t('inspector.borderColor')}
-          size='sm'
-          allowTransparent
-          value={strokeEnabled && stroke ? toHex(stroke) : null}
-          onChange={(color) =>
-            applyChars(
-              color === null
-                ? { stroke: null }
-                : { stroke: toRgba(color), stroke_width: strokeWidth > 0 ? strokeWidth : 1.5 },
-            )
-          }
-        />
-        <div className='w-12'>
-          <PresetField
-            name='border-width'
-            value={effectiveStrokeWidth === 0 ? 1.5 : effectiveStrokeWidth}
-            min={Math.min(0.5, effectiveStrokeWidth || 0.5)}
-            max={Math.max(32, effectiveStrokeWidth ?? 0)}
-            presets={borderWidths}
-            label={t('inspector.borderWidth')}
-            menuLabel={t('inspector.chooseBorderWidth')}
-            onChange={changeStrokeWidth}
-          />
+      {paragraph && (
+        <div className='flex shrink-0 items-center gap-1'>
+          <MoveVertical aria-hidden='true' className='size-3.5 text-muted-foreground' />
+          <div className='w-16'>
+            <PresetField
+              name='line-spacing'
+              value={lineHeight}
+              min={10}
+              max={500}
+              step={5}
+              presets={[50, 75, 100, 120, 150, 200, 250, 300]}
+              label={t('inspector.lineSpacing')}
+              menuLabel={t('inspector.chooseLineSpacing')}
+              onChange={(next) => apply({ line_height: next / 100 })}
+            />
+          </div>
+          <span aria-hidden='true' className='text-xs text-muted-foreground'>
+            %
+          </span>
         </div>
-      </div>
+      )}
+      {outlines.map((outline, index) => {
+        const { colorKey, widthKey, defaultColor, label, colorLabel, widthLabel, menuLabel } = outline
+        const width = chars[widthKey] ?? 0
+        const effectiveWidth = renderedNumber(widthKey, 0)
+        const color = chars[colorKey] ?? null
+        const enabled = color !== null && color[3] > 0 && width > 0
+        // The width field is in rendered pixels, not nominal style or canvas zoom.
+        const changeWidth = (next: number) => {
+          const patch = (scale: number): CharStyle => ({
+            [widthKey]: next / scale,
+            [colorKey]: color ?? toRgba(defaultColor),
+          })
+          if (typing) applyChars(patch(typing.scale))
+          else apply((layer) => ({ chars: patch(scales.get(layer.id) ?? 1) }))
+        }
+        return (
+          <div
+            key={colorKey}
+            role='group'
+            aria-label={t(`inspector.${label}`)}
+            className='flex shrink-0 items-center gap-1'
+          >
+            <span aria-hidden='true' className='text-xs text-muted-foreground'>
+              {index + 1}
+            </span>
+            <ColorWell
+              label={t(`inspector.${colorLabel}`)}
+              size='sm'
+              allowTransparent
+              value={enabled && color ? toHex(color) : null}
+              onChange={(next) =>
+                applyChars(
+                  next === null
+                    ? { [colorKey]: null }
+                    : { [colorKey]: toRgba(next), [widthKey]: width > 0 ? width : 1.5 },
+                )
+              }
+            />
+            <div className='w-12'>
+              <PresetField
+                name={index === 0 ? 'border-width' : 'outer-border-width'}
+                value={effectiveWidth === 0 ? 1.5 : effectiveWidth}
+                min={Math.min(0.5, effectiveWidth || 0.5)}
+                max={Math.max(32, effectiveWidth ?? 0)}
+                presets={borderWidths}
+                label={t(`inspector.${widthLabel}`)}
+                menuLabel={t(`inspector.${menuLabel}`)}
+                onChange={changeWidth}
+              />
+            </div>
+          </div>
+        )
+      })}
     </MovableTypeBar>
   )
 }
@@ -554,6 +622,8 @@ const CHAR_KEYS: CharKey[] = [
   'fill',
   'stroke',
   'stroke_width',
+  'outer_stroke',
+  'outer_stroke_width',
 ]
 
 /** What every character of `texts` shares, each span's marks over its text's style, and the values
@@ -627,6 +697,7 @@ function PresetField({
   value,
   min,
   max,
+  step = 0.5,
   presets,
   label,
   menuLabel,
@@ -639,6 +710,7 @@ function PresetField({
   value: number | null
   min: number
   max: number
+  step?: number
   presets: number[]
   label: string
   menuLabel: string
@@ -686,7 +758,7 @@ function PresetField({
       value={draft}
       min={min}
       max={max}
-      step={0.5}
+      step={step}
       onValueChange={setDraft}
       onValueCommitted={commit}
     >

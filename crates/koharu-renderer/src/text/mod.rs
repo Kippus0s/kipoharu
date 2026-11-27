@@ -38,6 +38,8 @@ pub struct TextRun {
     pub fill: Color,
     /// The stroke colour and width.
     pub stroke: Option<(Color, f32)>,
+    /// The outer stroke colour and additional width.
+    pub outer_stroke: Option<(Color, f32)>,
 }
 
 /// What laying out a text resolved, for the inspector and PSD export.
